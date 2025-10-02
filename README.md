@@ -42,22 +42,17 @@ yarn install
 
 Edit the `config.json` file to set default job parameters and Kubernetes connection details.
 
-## Starting the App
+## Starting the App (Development)
 
-This project uses Vite for development. To start the development server:
+To see changes instantly during development, use Vite's development server:
 
 ```
 yarn dev
 ```
 
+This enables hot module replacement (HMR), so your changes appear immediately in the browser.
+
 The app will be available at `http://localhost:3000` (or the port specified in your configuration).
-
-## Usage
-
-1. Open the app in your browser.
-2. Configure your job parameters and container image using the React-based UI.
-3. Save the configuration if needed.
-4. Execute the job in your Kubernetes cluster.
 
 ## Building for Production
 

@@ -40,3 +40,105 @@
 .read-the-docs {
   color: #888;
 }
+
+.app-container {
+  max-width: 700px;
+  margin: 40px auto;
+  padding: 24px;
+  background: #fff;
+  border-radius: 16px;
+  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.08);
+  font-family: 'Segoe UI', 'Roboto', 'Arial', sans-serif;
+}
+
+h1 {
+  text-align: center;
+  font-size: 2.2rem;
+  font-weight: 600;
+  margin-bottom: 32px;
+  color: #2d3748;
+}
+
+.job-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.job-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: #f7fafc;
+  border-radius: 12px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
+  padding: 20px 24px;
+  margin-bottom: 20px;
+  transition: box-shadow 0.2s;
+}
+
+.job-item:hover {
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.10);
+}
+
+.job-details {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start; /* Left align job name and description */
+}
+
+.job-name {
+  font-size: 1.2rem;
+  font-weight: 500;
+  color: #1a202c;
+  margin-bottom: 6px;
+  text-align: left; /* Ensure left alignment */
+}
+
+.job-desc {
+  font-size: 1rem;
+  color: #4a5568;
+  text-align: left; /* Ensure left alignment */
+}
+
+.run-btn {
+  background: linear-gradient(90deg, #3182ce 0%, #63b3ed 100%);
+  color: #fff;
+  border: none;
+  border-radius: 8px;
+  padding: 10px 24px;
+  font-size: 1rem;
+  font-weight: 500;
+  cursor: pointer;
+  box-shadow: 0 2px 8px rgba(49, 130, 206, 0.08);
+  transition: background 0.2s, box-shadow 0.2s;
+}
+
+.run-btn:hover {
+  background: linear-gradient(90deg, #2563eb 0%, #4299e1 100%);
+  box-shadow: 0 4px 16px rgba(49, 130, 206, 0.15);
+}
+
+.error {
+  color: #e53e3e;
+  text-align: center;
+  margin-top: 32px;
+  font-size: 1.1rem;
+}
+
+@media (max-width: 600px) {
+  .app-container {
+    padding: 8px;
+  }
+
+  .job-item {
+    flex-direction: column;
+    align-items: stretch;
+    padding: 16px 10px;
+  }
+
+  .run-btn {
+    width: 100%;
+    margin-top: 12px;
+  }
+}
