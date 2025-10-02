@@ -1,0 +1,20 @@
+# Example jobs.yaml
+jobs:
+  - name: "Backup Database"
+    description: "Run a one-time backup of the main database."
+    container: "backup-db:latest"
+    parameters:
+      - "--db=main"
+      - "--output=/backup"
+  - name: "Cleanup Temp Files"
+    description: "Remove temporary files from all nodes."
+    container: "cleanup:latest"
+    parameters:
+      - "--path=/tmp"
+  - name: "Generate Report"
+    description: "Generate monthly usage report."
+    container: "report-generator:latest"
+    parameters:
+      - "--month=10"
+      - "--year=2025"
+

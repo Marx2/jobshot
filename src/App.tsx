@@ -1,35 +1,49 @@
-import { useState } from 'react'
-import reactLogo from './assets/react.svg'
-import viteLogo from '/vite.svg'
-import './App.css'
+import {useEffect, useState} from 'react';
+import './App.css';
+import type {Job} from './configLoader';
+import {loadJobsConfig} from './configLoader';
 
 function App() {
-  const [count, setCount] = useState(0)
+  const [jobs, setJobs] = useState<Job[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    loadJobsConfig()
+    .then(config => {
+      setJobs(config.jobs);
+      setLoading(false);
+    })
+    .catch(_ => {
+      setError('Failed to load jobs config');
+      setLoading(false);
+    });
+  }, []);
+
+  const handleRun = (job: Job) => {
+    // Placeholder for job execution logic
+    alert(`Running job: ${job.name}`);
+  };
+
+  if (loading) return <div className="app-container">Loading jobs...</div>;
+  if (error) return <div className="app-container error">{error}</div>;
 
   return (
-    <>
-      <div>
-        <a href="https://vite.dev" target="_blank">
-          <img src={viteLogo} className="logo" alt="Vite logo" />
-        </a>
-        <a href="https://react.dev" target="_blank">
-          <img src={reactLogo} className="logo react" alt="React logo" />
-        </a>
+      <div className="app-container">
+        <h1>Jobshot - Job List</h1>
+        <ul className="job-list">
+          {jobs.map((job, idx) => (
+              <li key={idx} className="job-item">
+                <div className="job-details">
+                  <span className="job-name">{job.name}</span>
+                  <span className="job-desc">{job.description}</span>
+                </div>
+                <button className="run-btn" onClick={() => handleRun(job)}>Run</button>
+              </li>
+          ))}
+        </ul>
       </div>
-      <h1>Vite + React</h1>
-      <div className="card">
-        <button onClick={() => setCount((count) => count + 1)}>
-          count is {count}
-        </button>
-        <p>
-          Edit <code>src/App.tsx</code> and save to test HMR
-        </p>
-      </div>
-      <p className="read-the-docs">
-        Click on the Vite and React logos to learn more
-      </p>
-    </>
-  )
+  );
 }
 
-export default App
+export default App;
