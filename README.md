@@ -69,8 +69,10 @@ yarn build
 
 ## Running in Production
 
+To preview the production build, use Vite's preview command:
+
 ```
-yarn start
+yarn preview
 ```
 
 ## License
