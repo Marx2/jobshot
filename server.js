@@ -2,7 +2,12 @@ import express from 'express';
 import bodyParser from 'body-parser';
 import path from 'path';
 import {fileURLToPath} from 'url';
-import {BatchV1Api, CoreV1Api, KubeConfig} from '@kubernetes/client-node';
+import {
+  BatchV1Api,
+  CoreV1Api,
+  KubeConfig,
+  VersionApi
+} from '@kubernetes/client-node';
 import dotenv from 'dotenv';
 import fs from 'fs';
 import yaml from 'js-yaml';
@@ -54,30 +59,115 @@ function validateJobParams(job, apiServer, token, namespace) {
   return null;
 }
 
+const MIN_SUPPORTED_MAJOR = 1;
+const MIN_SUPPORTED_MINOR = 31; // Require Kubernetes 1.31+
+
+function isVersionSupported(info) {
+  if (!info) {
+    return false;
+  }
+  const major = parseInt((info.major || '').replace(/[^0-9]/g, ''), 10);
+  // Minor sometimes carries "+" or labels, strip non-digits
+  const minor = parseInt((info.minor || '').replace(/[^0-9]/g, ''), 10);
+  if (isNaN(major) || isNaN(minor)) {
+    return false;
+  }
+  if (major > MIN_SUPPORTED_MAJOR) {
+    return true;
+  }
+  if (major < MIN_SUPPORTED_MAJOR) {
+    return false;
+  }
+  return minor >= MIN_SUPPORTED_MINOR;
+}
+
+async function safeListPods(coreApi, namespace) {
+  // Always trim namespace to avoid hidden whitespace issues
+  const ns = (namespace || '').trim();
+  if (!ns) {
+    throw new Error('Namespace is empty after trimming.');
+  }
+  // Try object param style first (newer clients), then positional
+  try {
+    return await coreApi.listNamespacedPod({namespace: ns});
+  } catch (e1) {
+    const msg1 = String(e1);
+    if (/Required parameter namespace/.test(msg1)) {
+      // Object style expected but failed means we passed wrong shape; rethrow
+      throw e1;
+    }
+    // Maybe client expects positional
+    try {
+      return await coreApi.listNamespacedPod(ns);
+    } catch (e2) {
+      throw e2;
+    }
+  }
+}
+
+async function safeCreateJob(batchApi, namespace, k8sJob) {
+  const ns = (namespace || '').trim();
+  if (!ns) {
+    throw new Error('Namespace is empty after trimming (job creation).');
+  }
+  try {
+    return await batchApi.createNamespacedJob({namespace: ns, body: k8sJob});
+  } catch (e1) {
+    const msg1 = String(e1);
+    if (/Required parameter namespace/.test(msg1)) {
+      // This means positional call was attempted against object-param client OR object missing
+      // Re-throw because our object call should have provided namespace
+      throw e1;
+    }
+    // Try positional as fallback
+    try {
+      return await batchApi.createNamespacedJob(ns, k8sJob);
+    } catch (e2) {
+      throw e2;
+    }
+  }
+}
+
 async function validateK8sConnectivity(kc, namespace) {
   try {
+    // Version check first
+    try {
+      const versionClient = kc.makeApiClient(VersionApi);
+      const versionResp = await versionClient.getCode();
+      const versionInfo = versionResp.body || versionResp; // client style variance
+      const supported = isVersionSupported(versionInfo);
+      console.log('Kubernetes version info:', versionInfo);
+      if (!supported) {
+        return `Unsupported Kubernetes version ${versionInfo.major}.${versionInfo.minor}. Minimum required is ${MIN_SUPPORTED_MAJOR}.${MIN_SUPPORTED_MINOR}`;
+      }
+    } catch (verErr) {
+      console.warn(
+          'Failed to retrieve cluster version – proceeding but will enforce minimum support only if version known.',
+          verErr.message || verErr);
+    }
+
     const coreApi = kc.makeApiClient(CoreV1Api);
     const nsList = await coreApi.listNamespace();
-    // Support both response formats: nsList.body.items and nsList.items
-    const items = nsList.body?.items || nsList.items;
+    const listObj = nsList.body || nsList; // support both shapes
+    const items = listObj.items;
     if (!items || !Array.isArray(items)) {
       console.error('Unexpected response from listNamespace:',
-          JSON.stringify(nsList, null, 2));
+          JSON.stringify(listObj, null, 2));
       return 'Kubernetes API connectivity check failed: Unexpected response format from listNamespace.';
     }
-    // Extract namespace names using explicit property access
     const namespaceNames = items.map(ns => ns?.metadata?.name || '[unknown]');
     console.log('Connected to Kubernetes cluster. Namespaces:', namespaceNames);
-    // Try listing pods in the target namespace for more relevant check
+
+    // List pods (best effort) using safe wrapper
     try {
-      const pods = await coreApi.listNamespacedPod(namespace);
-      const podItems = pods.body?.items || pods.items;
-      if (!podItems || !Array.isArray(podItems)) {
-        console.warn('Unexpected response from listNamespacedPod:',
-            JSON.stringify(pods, null, 2));
-      } else {
+      const podsResp = await safeListPods(coreApi, namespace);
+      const podList = podsResp.body || podsResp;
+      const podItems = podList.items;
+      if (Array.isArray(podItems)) {
         const podNames = podItems.map(p => p?.metadata?.name || '[unknown]');
         console.log(`Pods in namespace '${namespace}':`, podNames);
+      } else {
+        console.warn('Unexpected pod list structure for namespace', namespace);
       }
     } catch (podErr) {
       console.warn(`Could not list pods in namespace '${namespace}':`,
@@ -103,27 +193,35 @@ function loadK8sConfig(apiServer, token) {
 }
 
 async function runK8sJob(batchApi, namespace, job) {
+  const nameSlug = job.name.toLowerCase().replace(/\s+/g, '-');
   const k8sJob = {
     apiVersion: 'batch/v1',
     kind: 'Job',
-    metadata: {name: job.name.toLowerCase().replace(/\s+/g, '-')},
+    metadata: {
+      name: nameSlug,
+      labels: {
+        'app.kubernetes.io/managed-by': 'jobshot',
+        'jobshot/name': nameSlug
+      },
+      annotations: {'jobshot/originalName': job.name},
+    },
     spec: {
       template: {
+        metadata: {labels: {'jobshot/job': nameSlug}},
         spec: {
-          containers: [
-            {
-              name: job.name.toLowerCase().replace(/\s+/g, '-'),
-              image: job.container,
-              args: job.parameters,
-            },
-          ],
+          containers: [{
+            name: nameSlug,
+            image: job.container,
+            args: job.parameters
+          }],
           restartPolicy: 'Never',
         },
       },
       backoffLimit: 1,
     },
   };
-  await batchApi.createNamespacedJob(namespace, k8sJob);
+  await safeCreateJob(batchApi, namespace, k8sJob);
+  return k8sJob.metadata.name;
 }
 
 app.post('/api/run-job', async (req, res) => {
@@ -150,7 +248,6 @@ app.post('/api/run-job', async (req, res) => {
     const kc = loadK8sConfig(apiServer, token);
     const batchApi = kc.makeApiClient(BatchV1Api);
 
-    // Connectivity validation
     const connError = await validateK8sConnectivity(kc, namespace);
     if (connError) {
       console.error('Connectivity validation failed:', connError);
@@ -158,9 +255,8 @@ app.post('/api/run-job', async (req, res) => {
       return;
     }
 
-    // Run job
-    await runK8sJob(batchApi, namespace, job);
-    res.status(200).send('Job started');
+    const jobName = await runK8sJob(batchApi, namespace, job);
+    res.status(200).json({message: 'Job started', jobName, namespace});
   } catch (err) {
     console.error('Job start error:', err);
     res.status(500).send(`Failed to start job: ${err}`);
