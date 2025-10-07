@@ -227,7 +227,7 @@ async function runK8sJob(batchApi, namespace, job) {
 app.post('/api/run-job', async (req, res) => {
   const job = req.body;
   const {apiServer, token} = getK8sConfig();
-  let namespace = job.namespace || process.env.VITE_K8S_NAMESPACE || 'default';
+  let namespace = job.namespace || 'default';
 
   // Diagnostic logging
   console.log('Received job namespace:', namespace);

@@ -61,7 +61,6 @@ your shell before starting the app:
 ```
 VITE_K8S_API=<Kubernetes API server URL>
 VITE_K8S_TOKEN=<Kubernetes Bearer Token>
-VITE_K8S_NAMESPACE=<Namespace> # optional, defaults to 'default'
 ```
 
 Example .env file:
@@ -69,7 +68,6 @@ Example .env file:
 ```
 VITE_K8S_API=https://your-k8s-server:6443
 VITE_K8S_TOKEN=your-access-token
-VITE_K8S_NAMESPACE=default
 ```
 
 ## How to Generate a Kubernetes Bearer Token (VITE_K8S_TOKEN)
