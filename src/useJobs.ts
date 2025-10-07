@@ -19,11 +19,34 @@ export function useJobs() {
     });
   }, []);
 
-  const runJob = (job: Job) => {
-    // Placeholder for job execution logic
-    alert(`Running job: ${job.name}`);
+  const runJob = async (job: Job) => {
+    const confirmed = window.confirm(`Are you sure to run ${job.name}?`);
+    if (!confirmed) return;
+    try {
+      const response = await fetch('/api/run-job', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify(job),
+      });
+      if (!response.ok) {
+        // Try to get error text from backend
+        const errorText = await response.text();
+        throw new Error(errorText || `HTTP ${response.status}`);
+      }
+      alert(`Job '${job.name}' started in Kubernetes.`);
+    } catch (err) {
+      // Show backend error message clearly
+      let message = '';
+      if (err instanceof Error) {
+        message = err.message;
+      } else if (typeof err === 'string') {
+        message = err;
+      } else {
+        message = 'Unknown error';
+      }
+      alert(`Failed to start job: ${message}`);
+    }
   };
 
   return {jobs, loading, error, runJob};
 }
-

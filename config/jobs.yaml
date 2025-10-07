@@ -6,15 +6,18 @@ jobs:
     parameters:
       - "--db=main"
       - "--output=/backup"
+    namespace: "pfire"
   - name: "Cleanup Temp Files"
     description: "Remove temporary files from all nodes."
     container: "cleanup:latest"
     parameters:
       - "--path=/tmp"
+    namespace: "pfire"
   - name: "Generate Report"
     description: "Generate monthly usage report."
     container: "report-generator:latest"
     parameters:
       - "--month=10"
       - "--year=2025"
+    namespace: "pfire"
 
