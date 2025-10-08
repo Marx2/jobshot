@@ -13,6 +13,7 @@ Jobshot is a JavaScript/TypeScript application that provides a UI for executing 
 - Configure jobs via UI
 - Pass parameters to jobs
 - Define container images
+- Provide explicit container entrypoint (command) via `entrypoint` array
 - Save job configurations to a config file
 
 ## Prerequisites
@@ -21,7 +22,9 @@ Jobshot is a JavaScript/TypeScript application that provides a UI for executing 
 - Yarn
 - Access to a Kubernetes cluster
 
-> **Note:** All communication with Kubernetes is handled directly via the Kubernetes SDK library. There is no need to have `kubectl` installed locally.
+> **Note:** All communication with Kubernetes is handled directly via the Kubernetes SDK library.
+> You do **not** need `kubectl` installed when running *inside* the cluster; for local development you
+> only need a token / API server URL.
 
 ## Installation
 
@@ -38,10 +41,6 @@ Install dependencies:
 yarn install
 ```
 
-## Configuration
-
-Edit the `config.json` file to set default job parameters and Kubernetes connection details.
-
 ## Job Configuration
 
 All job definitions are stored in a single YAML file:
@@ -50,104 +49,145 @@ All job definitions are stored in a single YAML file:
 config/jobs.yaml
 ```
 
-Edit this file to add, remove, or update jobs and their parameters. The frontend will automatically
-load jobs from this location.
+Each job supports the following fields:
 
-## Kubernetes Cluster Configuration
+```
+- name: string (required)
+  description: string
+  container: string (image reference, required)
+  entrypoint: [string, ...]   # Optional; becomes the container `command` (K8s)
+  parameters: [string, ...]   # Optional; becomes container `args`
+  namespace: string (optional; defaults to 'default' if omitted)
+```
 
-To connect to your Kubernetes cluster, set the following environment variables in a .env file or
-your shell before starting the app:
+Example:
+
+```yaml
+jobs:
+  - name: "Backup Database"
+    description: "Run a one-time backup of the main database."
+    container: "backup-db:latest"
+    entrypoint: ["/bin/sh", "-c"]
+    parameters:
+      - "./backup.sh --db=main"
+    namespace: "pfire"
+```
+
+The frontend automatically loads this file via the backend endpoint `/api/jobs`.
+
+## Connectivity Modes
+
+Jobshot can connect to Kubernetes in two modes:
+
+1. **External (local development / out-of-cluster)** – You supply `VITE_K8S_API` and
+   `VITE_K8S_TOKEN` environment variables.
+2. **In-Cluster (recommended for production)** – You deploy Jobshot as a Pod with a ServiceAccount.
+   No token or API URL env vars are required; the app auto-detects and uses the projected
+   ServiceAccount token.
+
+### 1. External Mode Configuration
+
+Set the following environment variables in a `.env` file or your shell before starting the app:
 
 ```
 VITE_K8S_API=<Kubernetes API server URL>
 VITE_K8S_TOKEN=<Kubernetes Bearer Token>
 ```
 
-Example .env file:
+Example `.env` file:
 
 ```
 VITE_K8S_API=https://your-k8s-server:6443
 VITE_K8S_TOKEN=your-access-token
 ```
 
-## How to Generate a Kubernetes Bearer Token (VITE_K8S_TOKEN)
+See the token generation guidance below if you need a short-lived token for local dev.
 
-To connect Jobshot to your Kubernetes cluster, you need a Bearer Token for API access. The
-recommended way is to create a ServiceAccount and extract its token:
+### 2. In-Cluster Mode (No Manual Token Management)
 
-### For Kubernetes v1.24 and newer
+When running *inside* the cluster, simply:
 
-1. **Create a ServiceAccount:**
+1. Create a dedicated namespace (optional):
    ```sh
-   kubectl create serviceaccount api-access
+   kubectl create namespace jobshot
    ```
-2. **Bind the ServiceAccount to a ClusterRole (e.g., cluster-admin):**
-   ```sh
-   kubectl create clusterrolebinding api-access-binding --clusterrole=cluster-admin --serviceaccount=default:api-access
-   ```
-3. **Get the ServiceAccount token:**
-   ```sh
-   kubectl create token api-access
-   ```
-   Copy the output and set it as your VITE_K8S_TOKEN.
-
-### For Kubernetes v1.23 and older
-
-1. **Create a ServiceAccount and binding as above.**
-2. **Extract the token from the ServiceAccount secret:**
-   ```sh
-   kubectl get secret $(kubectl get serviceaccount api-access -o jsonpath="{.secrets[0].name}") -o jsonpath="{.data.token}" | base64 --decode
-   ```
-   Copy the output and set it as your VITE_K8S_TOKEN.
-
-## Example: ServiceAccount and ClusterRoleBinding via YAML (Kubernetes v1.24+)
-
-You can use YAML manifests to create a ServiceAccount and ClusterRoleBinding, then generate a token
-for API access.
-
-1. **Create serviceaccount.yaml**
+2. Create a ServiceAccount with minimal RBAC:
    ```yaml
    apiVersion: v1
    kind: ServiceAccount
    metadata:
-     name: api-access
-     namespace: default
-   ```
-
-2. **Create clusterrolebinding.yaml**
-   ```yaml
+     name: jobshot
+     namespace: jobshot
+   ---
    apiVersion: rbac.authorization.k8s.io/v1
-   kind: ClusterRoleBinding
+   kind: Role
    metadata:
-     name: api-access-binding
+     name: jobshot-job-runner
+     namespace: jobshot
+   rules:
+     - apiGroups: ["batch"]
+       resources: ["jobs"]
+       verbs: ["create","get","list","watch"]
+     - apiGroups: [""]
+       resources: ["pods"]
+       verbs: ["get","list","watch"]
+   ---
+   apiVersion: rbac.authorization.k8s.io/v1
+   kind: RoleBinding
+   metadata:
+     name: jobshot-job-runner-binding
+     namespace: jobshot
    subjects:
-   - kind: ServiceAccount
-     name: api-access
-     namespace: default
+     - kind: ServiceAccount
+       name: jobshot
+       namespace: jobshot
    roleRef:
-     kind: ClusterRole
-     name: cluster-admin
+     kind: Role
+     name: jobshot-job-runner
      apiGroup: rbac.authorization.k8s.io
    ```
-
-3. **Apply the YAML files:**
-   ```sh
-   kubectl apply -f serviceaccount.yaml
-   kubectl apply -f clusterrolebinding.yaml
+3. Deploy Jobshot referencing the ServiceAccount:
+   ```yaml
+   apiVersion: apps/v1
+   kind: Deployment
+   metadata:
+     name: jobshot
+     namespace: jobshot
+   spec:
+     replicas: 1
+     selector:
+       matchLabels:
+         app: jobshot
+     template:
+       metadata:
+         labels:
+           app: jobshot
+       spec:
+         serviceAccountName: jobshot
+         containers:
+           - name: jobshot
+             image: ghcr.io/your-org/jobshot:latest
+             ports:
+               - containerPort: 3000
    ```
 
-4. **Generate the token (Kubernetes v1.24+ including v1.31):**
-   ```sh
-   kubectl create token api-access -n default
-   ```
-   Copy the output and set it as your VITE_K8S_TOKEN.
+The backend automatically falls back to in-cluster configuration (`KubeConfig.loadFromCluster()`)
+when `VITE_K8S_API` and `VITE_K8S_TOKEN` are not set.
 
-**Security Note:**
+## Generating a Token for External Mode (Optional)
 
-- You can restrict permissions by using a RoleBinding and Role for namespace-only access.
-- Never share this token publicly.
-- Use a namespace other than `default` for better isolation if needed.
-- You can restrict permissions by using a different ClusterRole or Role.
+For **Kubernetes v1.24+** using the TokenRequest API:
+
+```sh
+kubectl create serviceaccount api-access
+kubectl create clusterrolebinding api-access-binding --clusterrole=cluster-admin --serviceaccount=default:api-access
+kubectl create token api-access
+```
+
+Copy the token output and use it as `VITE_K8S_TOKEN`.
+
+> Tokens created this way are short-lived (commonly 1 hour). For continuous usage prefer in-cluster
+> mode instead of manually refreshing.
 
 ## Dependencies
 
@@ -159,87 +199,66 @@ yarn add @kubernetes/client-node
 
 ## Starting the App (Development)
 
-To see changes instantly during development, use Vite's development server:
-
 ```
 yarn dev
 ```
 
-This enables hot module replacement (HMR), so your changes appear immediately in the browser.
+The app will be available at `http://localhost:3000` and will proxy API calls if configured (or you
+can run the express server directly with `node server.js`).
 
-The app will be available at `http://localhost:3000` (or the port specified in your configuration).
+## Running the Backend Server (Standalone)
 
-## Running the Backend Server
+If you want to run the backend plus built frontend from Node:
 
-To enable job execution in Kubernetes, you must run the backend server:
-
-1. Install backend dependencies:
+1. Build the frontend:
+   ```sh
+   yarn build
    ```
-   yarn add express body-parser dotenv
-   ```
-2. Start the backend server:
-   ```
+2. Start the server:
+   ```sh
    node server.js
    ```
 
-The backend listens on port 3001 by default and exposes the /api/run-job endpoint for the frontend
-to trigger jobs in Kubernetes.
-
 ## Building for Production
-
-To build the app for production using Vite:
 
 ```
 yarn build
 ```
 
-## Running in Production
-
-To preview the production build, use Vite's preview command:
-
-```
-yarn preview
-```
-
 ## Containerization with Docker
 
-You can run Jobshot as a single container that serves both the UI and backend API on the same port,
-avoiding CORS issues.
+A `Dockerfile` is provided that builds the frontend and serves it via the same Express backend.
 
-### Dockerfile
+Build and run locally (external mode example):
 
-A Dockerfile is provided in the project root. It:
+```sh
+docker build -t jobshot .
+Docker run -p 3000:3000 --env-file .env jobshot
+```
 
-- Installs dependencies
-- Builds the React UI
-- Starts the Express backend, which serves both the UI and API
+In-cluster you typically only need:
 
-### Build and Run the Container
-
-1. Build the Docker image:
-   ```sh
-   docker build -t jobshot .
-   ```
-2. Run the container (with environment variables for Kubernetes cluster):
-   ```sh
-   docker run -p 3000:3000 --env-file .env jobshot
-   ```
-    - The app will be available at http://localhost:3000
-    - Both the UI and API are served from the same port (3000)
-
-### Notes
-
-- The backend Express server serves static files from the React build (dist/) and handles API
-  requests (e.g., /api/run-job) on the same port.
-- This setup avoids CORS issues and simplifies deployment.
-- Make sure your .env file contains the required Kubernetes cluster configuration variables (see
-  above).
+```sh
+docker build -t ghcr.io/your-org/jobshot:latest .
+# push image, then apply the deployment manifest
+```
 
 ## Architecture
 
-- The frontend displays jobs and sends job execution requests to the backend.
-- The backend uses the Kubernetes SDK to create jobs in your cluster, using credentials and address
-  from environment variables.
+- Frontend loads and displays jobs from `/api/jobs`.
+- Backend exposes `/api/run-job` creating a Kubernetes Job object with:
+    - `spec.template.spec.containers[0].command` from `entrypoint`
+    - `spec.template.spec.containers[0].args` from `parameters`
+- Auth selection:
+    - External: environment variables
+    - In-cluster: ServiceAccount (auto token rotation)
+
+## Security Considerations
+
+- Grant least privilege; avoid `cluster-admin` unless absolutely required.
+- Prefer namespace-scoped `Role`/`RoleBinding` for contained operations.
+- Rotate images and scan for vulnerabilities regularly.
+- Validate/whitelist allowed images if exposing UI to untrusted users.
 
 ## License
 
@@ -247,4 +266,4 @@ MIT
 
 ---
 
-For more details, see the documentation or contact the maintainer.
+For more details, open an issue or contact the maintainer.
