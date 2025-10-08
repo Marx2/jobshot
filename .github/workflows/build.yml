@@ -59,8 +59,9 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=local,src=/tmp/.buildx-cache
           cache-to: type=local,dest=/tmp/.buildx-cache
-          outputs: type=image,name=target,annotation-index.org.opencontainers.image.description=Test Cafe scraper
+          outputs: type=image,name=target,annotation-index.org.opencontainers.image.description=Kubernetes jobs runner UI
           # tags: |
           # ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
           # ghcr.io/marx2/${{ github.repository }}:latest
           # ghcr.io/marx2/${{ github.repository }}:1.0.${{ github.run_number }}
+
