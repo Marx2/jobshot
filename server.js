@@ -32,16 +32,20 @@ function getK8sConfig() {
 }
 
 function validateJobParams(job, apiServer, token, namespace) {
-  if (typeof apiServer !== 'string' || !apiServer.trim()) {
-    return 'Kubernetes API server address (VITE_K8S_API) is required and must be a non-empty string.';
-  }
-  try {
-    new URL(apiServer);
-  } catch {
-    return 'Kubernetes API server address (VITE_K8S_API) is not a valid URL.';
-  }
-  if (typeof token !== 'string' || !token.trim()) {
-    return 'Kubernetes Bearer Token (VITE_K8S_TOKEN) is required and must be a non-empty string.';
+  // Allow omission of apiServer/token if running in-cluster (env vars not supplied)
+  const externalMode = !!(apiServer && token);
+  if (externalMode) {
+    if (typeof apiServer !== 'string' || !apiServer.trim()) {
+      return 'Kubernetes API server address (VITE_K8S_API) is required and must be a non-empty string.';
+    }
+    try {
+      new URL(apiServer);
+    } catch {
+      return 'Kubernetes API server address (VITE_K8S_API) is not a valid URL.';
+    }
+    if (typeof token !== 'string' || !token.trim()) {
+      return 'Kubernetes Bearer Token (VITE_K8S_TOKEN) is required and must be a non-empty string.';
+    }
   }
   if (typeof namespace !== 'string' || !namespace.trim()) {
     return 'Job namespace is required and must be a non-empty string.';
@@ -67,7 +71,6 @@ function isVersionSupported(info) {
     return false;
   }
   const major = parseInt((info.major || '').replace(/[^0-9]/g, ''), 10);
-  // Minor sometimes carries "+" or labels, strip non-digits
   const minor = parseInt((info.minor || '').replace(/[^0-9]/g, ''), 10);
   if (isNaN(major) || isNaN(minor)) {
     return false;
@@ -82,21 +85,17 @@ function isVersionSupported(info) {
 }
 
 async function safeListPods(coreApi, namespace) {
-  // Always trim namespace to avoid hidden whitespace issues
   const ns = (namespace || '').trim();
   if (!ns) {
     throw new Error('Namespace is empty after trimming.');
   }
-  // Try object param style first (newer clients), then positional
   try {
     return await coreApi.listNamespacedPod({namespace: ns});
   } catch (e1) {
     const msg1 = String(e1);
     if (/Required parameter namespace/.test(msg1)) {
-      // Object style expected but failed means we passed wrong shape; rethrow
       throw e1;
     }
-    // Maybe client expects positional
     try {
       return await coreApi.listNamespacedPod(ns);
     } catch (e2) {
@@ -115,11 +114,8 @@ async function safeCreateJob(batchApi, namespace, k8sJob) {
   } catch (e1) {
     const msg1 = String(e1);
     if (/Required parameter namespace/.test(msg1)) {
-      // This means positional call was attempted against object-param client OR object missing
-      // Re-throw because our object call should have provided namespace
       throw e1;
     }
-    // Try positional as fallback
     try {
       return await batchApi.createNamespacedJob(ns, k8sJob);
     } catch (e2) {
@@ -130,11 +126,10 @@ async function safeCreateJob(batchApi, namespace, k8sJob) {
 
 async function validateK8sConnectivity(kc, namespace) {
   try {
-    // Version check first
     try {
       const versionClient = kc.makeApiClient(VersionApi);
       const versionResp = await versionClient.getCode();
-      const versionInfo = versionResp.body || versionResp; // client style variance
+      const versionInfo = versionResp.body || versionResp;
       const supported = isVersionSupported(versionInfo);
       console.log('Kubernetes version info:', versionInfo);
       if (!supported) {
@@ -148,7 +143,7 @@ async function validateK8sConnectivity(kc, namespace) {
 
     const coreApi = kc.makeApiClient(CoreV1Api);
     const nsList = await coreApi.listNamespace();
-    const listObj = nsList.body || nsList; // support both shapes
+    const listObj = nsList.body || nsList;
     const items = listObj.items;
     if (!items || !Array.isArray(items)) {
       console.error('Unexpected response from listNamespace:',
@@ -158,7 +153,6 @@ async function validateK8sConnectivity(kc, namespace) {
     const namespaceNames = items.map(ns => ns?.metadata?.name || '[unknown]');
     console.log('Connected to Kubernetes cluster. Namespaces:', namespaceNames);
 
-    // List pods (best effort) using safe wrapper
     try {
       const podsResp = await safeListPods(coreApi, namespace);
       const podList = podsResp.body || podsResp;
@@ -181,18 +175,25 @@ async function validateK8sConnectivity(kc, namespace) {
   }
 }
 
-function loadK8sConfig(apiServer, token) {
+function buildK8sClient() {
+  const {apiServer, token} = getK8sConfig();
   const kc = new KubeConfig();
-  kc.loadFromOptions({
-    clusters: [{name: 'cluster', server: apiServer, skipTLSVerify: true}],
-    users: [{name: 'user', token}],
-    contexts: [{name: 'context', user: 'user', cluster: 'cluster'}],
-    currentContext: 'context',
-  });
+  if (apiServer && token) {
+    kc.loadFromOptions({
+      clusters: [{name: 'cluster', server: apiServer, skipTLSVerify: true}],
+      users: [{name: 'user', token}],
+      contexts: [{name: 'context', user: 'user', cluster: 'cluster'}],
+      currentContext: 'context',
+    });
+  } else {
+    // In-cluster config (ServiceAccount)
+    kc.loadFromCluster();
+  }
   return kc;
 }
 
-async function runK8sJob(batchApi, namespace, job) {
+async function runK8sJob(kc, namespace, job) {
+  const batchApi = kc.makeApiClient(BatchV1Api);
   const nameSlug = job.name.toLowerCase().replace(/\s+/g, '-');
   const k8sJob = {
     apiVersion: 'batch/v1',
@@ -212,7 +213,7 @@ async function runK8sJob(batchApi, namespace, job) {
           containers: [{
             name: nameSlug,
             image: job.container,
-            command: job.entrypoint, // <-- Pass entrypoint as command
+            command: job.entrypoint,
             args: job.parameters
           }],
           restartPolicy: 'Never',
@@ -246,17 +247,14 @@ app.post('/api/run-job', async (req, res) => {
   }
 
   try {
-    const kc = loadK8sConfig(apiServer, token);
-    const batchApi = kc.makeApiClient(BatchV1Api);
-
+    const kc = buildK8sClient();
     const connError = await validateK8sConnectivity(kc, namespace);
     if (connError) {
       console.error('Connectivity validation failed:', connError);
       res.status(400).send(connError);
       return;
     }
-
-    const jobName = await runK8sJob(batchApi, namespace, job);
+    const jobName = await runK8sJob(kc, namespace, job);
     res.status(200).json({message: 'Job started', jobName, namespace});
   } catch (err) {
     console.error('Job start error:', err);
@@ -276,7 +274,6 @@ app.get('/api/jobs', (req, res) => {
   }
 });
 
-// Fallback: serve index.html for any non-API route
 app.use((req, res, next) => {
   if (!req.path.startsWith('/api/')) {
     res.sendFile(path.join(__dirname, 'dist', 'index.html'));
@@ -285,7 +282,6 @@ app.use((req, res, next) => {
   }
 });
 
-// Add global error logging
 process.on('unhandledRejection', (reason, promise) => {
   console.error('Unhandled Rejection:', reason);
 });
