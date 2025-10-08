@@ -2,6 +2,7 @@ export interface Job {
   name: string;
   description: string;
   container: string;
+  entrypoint: string[]; // <-- Added entrypoint field
   parameters: string[];
   namespace?: string;
 }

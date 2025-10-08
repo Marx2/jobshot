@@ -212,6 +212,7 @@ async function runK8sJob(batchApi, namespace, job) {
           containers: [{
             name: nameSlug,
             image: job.container,
+            command: job.entrypoint, // <-- Pass entrypoint as command
             args: job.parameters
           }],
           restartPolicy: 'Never',

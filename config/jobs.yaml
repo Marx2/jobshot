@@ -1,8 +1,15 @@
 # Example jobs.yaml
 jobs:
+  - name: "Test container"
+    description: "Run a netshoot test container."
+    container: "nicolaka/netshoot"
+    entrypoint: ["/bin/sh echo '--- System Load ---'; uptime; echo '\n--- Listening Sockets ---'; ss -tuln", "-c"]
+    parameters: []
+    namespace: "pfire"
   - name: "Backup Database"
     description: "Run a one-time backup of the main database."
     container: "backup-db:latest"
+    entrypoint: ["/bin/sh", "-c"]
     parameters:
       - "--db=main"
       - "--output=/backup"
@@ -10,14 +17,15 @@ jobs:
   - name: "Cleanup Temp Files"
     description: "Remove temporary files from all nodes."
     container: "cleanup:latest"
+    entrypoint: ["/bin/sh", "-c"]
     parameters:
       - "--path=/tmp"
     namespace: "pfire"
   - name: "Generate Report"
     description: "Generate monthly usage report."
     container: "report-generator:latest"
+    entrypoint: ["/bin/sh", "-c"]
     parameters:
       - "--month=10"
       - "--year=2025"
     namespace: "pfire"
-
