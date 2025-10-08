@@ -2,12 +2,7 @@ import express from 'express';
 import bodyParser from 'body-parser';
 import path from 'path';
 import {fileURLToPath} from 'url';
-import {
-  BatchV1Api,
-  CoreV1Api,
-  KubeConfig,
-  VersionApi
-} from '@kubernetes/client-node';
+import {BatchV1Api, KubeConfig, VersionApi} from '@kubernetes/client-node';
 import dotenv from 'dotenv';
 import fs from 'fs';
 import yaml from 'js-yaml';
@@ -84,47 +79,8 @@ function isVersionSupported(info) {
   return minor >= MIN_SUPPORTED_MINOR;
 }
 
-async function safeListPods(coreApi, namespace) {
-  const ns = (namespace || '').trim();
-  if (!ns) {
-    throw new Error('Namespace is empty after trimming.');
-  }
-  try {
-    return await coreApi.listNamespacedPod({namespace: ns});
-  } catch (e1) {
-    const msg1 = String(e1);
-    if (/Required parameter namespace/.test(msg1)) {
-      throw e1;
-    }
-    try {
-      return await coreApi.listNamespacedPod(ns);
-    } catch (e2) {
-      throw e2;
-    }
-  }
-}
-
-async function safeCreateJob(batchApi, namespace, k8sJob) {
-  const ns = (namespace || '').trim();
-  if (!ns) {
-    throw new Error('Namespace is empty after trimming (job creation).');
-  }
-  try {
-    return await batchApi.createNamespacedJob({namespace: ns, body: k8sJob});
-  } catch (e1) {
-    const msg1 = String(e1);
-    if (/Required parameter namespace/.test(msg1)) {
-      throw e1;
-    }
-    try {
-      return await batchApi.createNamespacedJob(ns, k8sJob);
-    } catch (e2) {
-      throw e2;
-    }
-  }
-}
-
-async function validateK8sConnectivity(kc, namespace) {
+// Connectivity check now only attempts to fetch the cluster version.
+async function validateK8sConnectivity(kc) {
   try {
     try {
       const versionClient = kc.makeApiClient(VersionApi);
@@ -137,41 +93,15 @@ async function validateK8sConnectivity(kc, namespace) {
       }
     } catch (verErr) {
       console.warn(
-          'Failed to retrieve cluster version – proceeding but will enforce minimum support only if version known.',
-          verErr.message || verErr);
-    }
-
-    const coreApi = kc.makeApiClient(CoreV1Api);
-    const nsList = await coreApi.listNamespace();
-    const listObj = nsList.body || nsList;
-    const items = listObj.items;
-    if (!items || !Array.isArray(items)) {
-      console.error('Unexpected response from listNamespace:',
-          JSON.stringify(listObj, null, 2));
-      return 'Kubernetes API connectivity check failed: Unexpected response format from listNamespace.';
-    }
-    const namespaceNames = items.map(ns => ns?.metadata?.name || '[unknown]');
-    console.log('Connected to Kubernetes cluster. Namespaces:', namespaceNames);
-
-    try {
-      const podsResp = await safeListPods(coreApi, namespace);
-      const podList = podsResp.body || podsResp;
-      const podItems = podList.items;
-      if (Array.isArray(podItems)) {
-        const podNames = podItems.map(p => p?.metadata?.name || '[unknown]');
-        console.log(`Pods in namespace '${namespace}':`, podNames);
-      } else {
-        console.warn('Unexpected pod list structure for namespace', namespace);
-      }
-    } catch (podErr) {
-      console.warn(`Could not list pods in namespace '${namespace}':`,
-          podErr.body?.message || podErr.message || podErr);
+          'Failed to retrieve cluster version during connectivity test.',
+          verErr.message || verErr
+      );
+      // If version cannot be fetched we still proceed (treat as soft warning)
     }
     return null;
   } catch (err) {
     console.error('Kubernetes connectivity error:', err);
-    return `Failed to connect to Kubernetes API or list namespaces: ${err.message
-    || err}`;
+    return `Failed to connect to Kubernetes API: ${err.message || err}`;
   }
 }
 
@@ -222,7 +152,7 @@ async function runK8sJob(kc, namespace, job) {
       backoffLimit: 1,
     },
   };
-  await safeCreateJob(batchApi, namespace, k8sJob);
+  await batchApi.createNamespacedJob(namespace, k8sJob); // Simpler direct call
   return k8sJob.metadata.name;
 }
 
@@ -248,7 +178,7 @@ app.post('/api/run-job', async (req, res) => {
 
   try {
     const kc = buildK8sClient();
-    const connError = await validateK8sConnectivity(kc, namespace);
+    const connError = await validateK8sConnectivity(kc);
     if (connError) {
       console.error('Connectivity validation failed:', connError);
       res.status(400).send(connError);
@@ -282,7 +212,7 @@ app.use((req, res, next) => {
   }
 });
 
-process.on('unhandledRejection', (reason, promise) => {
+process.on('unhandledRejection', (reason) => {
   console.error('Unhandled Rejection:', reason);
 });
 process.on('uncaughtException', (err) => {
