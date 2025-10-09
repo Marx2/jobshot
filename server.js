@@ -2,7 +2,12 @@ import express from 'express';
 import bodyParser from 'body-parser';
 import path from 'path';
 import {fileURLToPath} from 'url';
-import {BatchV1Api, KubeConfig, VersionApi} from '@kubernetes/client-node';
+import {
+  BatchV1Api,
+  CoreV1Api,
+  KubeConfig,
+  VersionApi
+} from '@kubernetes/client-node';
 import dotenv from 'dotenv';
 import fs from 'fs';
 import yaml from 'js-yaml';
@@ -122,6 +127,23 @@ function buildK8sClient() {
   return kc;
 }
 
+// New function: attempt to list pods in the namespace (limit 1) to validate access & namespace existence.
+async function listPodsInNamespace(kc, namespace) {
+  const core = kc.makeApiClient(CoreV1Api);
+  try {
+    // listNamespacedPod(namespace, pretty, allowWatchBookmarks, _continue, fieldSelector, labelSelector, limit)
+    const resp = await core.listNamespacedPod(namespace, undefined, undefined,
+        undefined, undefined, undefined, 1);
+    const count = resp?.body?.items?.length ?? 0;
+    return {ok: true, count};
+  } catch (err) {
+    console.error(`Failed to list pods in namespace '${namespace}':`,
+        err?.response?.body || err?.message || err);
+    const message = err?.response?.body?.message || err?.message || String(err);
+    return {ok: false, error: message};
+  }
+}
+
 async function runK8sJob(kc, namespace, job) {
   const batchApi = kc.makeApiClient(BatchV1Api);
   const nameSlug = job.name.toLowerCase().replace(/\s+/g, '-');
@@ -159,7 +181,7 @@ async function runK8sJob(kc, namespace, job) {
 app.post('/api/run-job', async (req, res) => {
   const job = req.body;
   const {apiServer, token} = getK8sConfig();
-  let namespace = job.namespace || 'default';
+  const namespace = job.namespace; // Must be explicitly supplied; no default fallback.
 
   // Diagnostic logging
   console.log('Received job namespace:', namespace);
@@ -176,6 +198,9 @@ app.post('/api/run-job', async (req, res) => {
     return;
   }
 
+  // Diagnostic logging (minimal)
+  console.log('Submitting job', {name: job.name, namespace});
+
   try {
     const kc = buildK8sClient();
     const connError = await validateK8sConnectivity(kc);
@@ -184,6 +209,14 @@ app.post('/api/run-job', async (req, res) => {
       res.status(400).send(connError);
       return;
     }
+
+    const podListResult = await listPodsInNamespace(kc, namespace);
+    if (!podListResult.ok) {
+      res.status(503).send(
+          `Failed to list pods in namespace '${namespace}': ${podListResult.error}`);
+      return;
+    }
+
     const jobName = await runK8sJob(kc, namespace, job);
     res.status(200).json({message: 'Job started', jobName, namespace});
   } catch (err) {
