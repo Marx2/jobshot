@@ -29,8 +29,14 @@ export function useJobs() {
         body: JSON.stringify(job),
       });
       if (!response.ok) {
-        // Try to get error text from backend
         const errorText = await response.text();
+        if (response.status === 503) {
+          // Backend preflight connectivity / namespace / RBAC failure
+          throw new Error(errorText || 'Kubernetes connectivity / namespace access failed');
+        }
+        if (response.status === 400) {
+          throw new Error(errorText || 'Invalid request parameters');
+        }
         throw new Error(errorText || `HTTP ${response.status}`);
       }
       alert(`Job '${job.name}' started in Kubernetes.`);
