@@ -149,6 +149,37 @@ async function selfSubjectAccessReview(namespace, actions) {
         reason: json?.status?.reason || null
       });
     } catch (e) {
+      // Attempt one insecure retry if allowed and TLS issue
+      const allowFallback = process.env.ALLOW_TLS_FALLBACK === 'true'
+          || process.env.SKIP_K8S_TLS_VERIFY === 'true';
+      if (allowFallback && tlsShouldFallback(e)) {
+        console.warn('[rbac] TLS error, retrying with insecure agent for',
+            a.verb, a.resource);
+        const insecureAgent = new https.Agent({rejectUnauthorized: false});
+        try {
+          const res2 = await fetch(url, {
+            method: 'POST',
+            headers,
+            body: JSON.stringify(body),
+            agent: insecureAgent
+          });
+          const json2 = await res2.json().catch(() => ({}));
+          const allowed2 = json2?.status?.allowed === true;
+          results.push({
+            action: `${a.verb} ${a.resource}`,
+            allowed: allowed2,
+            reason: json2?.status?.reason || 'insecure-fallback'
+          });
+          continue;
+        } catch (e2) {
+          results.push({
+            action: `${a.verb} ${a.resource}`,
+            allowed: false,
+            error: `fallback: ${e2.message || e2}`
+          });
+          continue;
+        }
+      }
       results.push({
         action: `${a.verb} ${a.resource}`,
         allowed: false,
@@ -220,13 +251,51 @@ async function rawListPods(namespace) {
       console.error('[preflight] rawListPods fetch error',
           {base, message: e.message, code: e.code, causeCode: e?.cause?.code});
       if (isNetworkError(e)) {
-        // Continue to next base, but keep last network error details for final message if all fail
         lastNetworkErr = {
           message: e.message,
           code: e.code || e?.cause?.code,
           base
         };
         continue;
+      }
+      const allowFallback = process.env.ALLOW_TLS_FALLBACK === 'true'
+          || process.env.SKIP_K8S_TLS_VERIFY === 'true';
+      if (tlsShouldFallback(e) && !allowFallback) {
+        console.warn(
+            '[preflight] TLS verification failed (self-signed or unknown CA). Set ALLOW_TLS_FALLBACK=true or SKIP_K8S_TLS_VERIFY=true to retry insecure, or remove VITE_K8S_API to use in-cluster host with mounted CA.');
+      }
+      if (allowFallback && tlsShouldFallback(e)) {
+        console.warn(
+            '[preflight] TLS error, retrying with insecure agent for base',
+            base);
+        const insecureAgent = new https.Agent({rejectUnauthorized: false});
+        try {
+          const res2 = await fetch(url, {headers, agent: insecureAgent});
+          if (!res2.ok) {
+            const t2 = await res2.text();
+            return {
+              ok: false,
+              error: `Raw pod list insecure HTTP ${res2.status}: ${t2}`,
+              base,
+              status: res2.status
+            };
+          }
+          const j2 = await res2.json();
+          const count2 = Array.isArray(j2.items) ? j2.items.length : 0;
+          return {
+            ok: true,
+            count: count2,
+            method: `raw-insecure(${base === explicit ? 'explicit'
+                : 'incluster'})`,
+            base
+          };
+        } catch (e2) {
+          return {
+            ok: false,
+            error: `Raw pod list insecure retry error: ${e2.message || e2}`,
+            base
+          };
+        }
       }
       return {
         ok: false,
