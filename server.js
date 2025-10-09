@@ -65,8 +65,20 @@ function validateJobParams(job, apiServer, token, namespace) {
 
 // Connectivity check now only attempts to fetch the cluster version.
 async function validateK8sConnectivity(kc, namespace) {
-  const result = await rawListPods(namespace || 'kube-system');
-  return result.ok ? null : result.error;
+  const primary = await rawListPods(namespace || 'kube-system');
+  if (primary.ok) {
+    return null;
+  }
+  const rbac = await selfSubjectAccessReview(namespace || 'pfire', [
+    {verb: 'list', resource: 'pods'},
+    {verb: 'create', resource: 'jobs'}
+  ]);
+  const rbacSummary = rbac.map(
+      r => `${r.action}=${r.allowed ? 'allowed' : 'denied'}${r.reason
+          ? `(${r.reason})` : r.error ? `(error:${r.error})` : ''}`).join('; ');
+  const detail = `base=${primary.base
+  || 'n/a'}; ${primary.error}; RBAC: ${rbacSummary}`;
+  return detail;
 }
 
 function readServiceAccountToken() {
@@ -86,49 +98,157 @@ function buildInClusterBaseURL() {
   return null;
 }
 
-async function rawListPods(namespace) {
-  if (!namespace) {
-    return {
-      ok: false,
-      error: 'No namespace provided to rawListPods'
-    };
-  }
-  // Prefer explicit apiServer env (external cluster) else in-cluster base
+async function selfSubjectAccessReview(namespace, actions) {
+  // actions: [{verb:'list',resource:'pods'},{verb:'create',resource:'jobs'}]
   const explicit = process.env.VITE_K8S_API;
   const base = explicit || buildInClusterBaseURL();
+  const results = [];
   if (!base) {
-    return {
-      ok: false,
-      error: 'No Kubernetes API base URL (VITE_K8S_API or in-cluster env)'
-    };
+    return [{
+      action: '(rbac)',
+      allowed: false,
+      error: 'No API base URL for RBAC check'
+    }];
   }
-  const url = `${base}/api/v1/namespaces/${namespace}/pods?limit=1`;
   let ca;
-  let agent;
   try {
     ca = fs.readFileSync(SA_CA_PATH);
   } catch {
   }
   const token = readServiceAccountToken();
-  const headers = {};
-  if (token) {
-    headers['Authorization'] = `Bearer ${token}`;
-  }
-  headers['Accept'] = 'application/json';
   const skipVerify = process.env.SKIP_K8S_TLS_VERIFY === 'true';
-  agent = new https.Agent({rejectUnauthorized: !skipVerify && !!ca, ca});
-  try {
-    const res = await fetch(url, {headers, agent});
-    if (!res.ok) {
-      const text = await res.text();
-      return {ok: false, error: `Raw pod list HTTP ${res.status}: ${text}`};
+  const agent = new https.Agent({rejectUnauthorized: !skipVerify && !!ca, ca});
+  for (const a of actions) {
+    const url = `${base}/apis/authorization.k8s.io/v1/selfsubjectaccessreviews`;
+    const body = {
+      kind: 'SelfSubjectAccessReview',
+      apiVersion: 'authorization.k8s.io/v1',
+      spec: {
+        resourceAttributes: {
+          namespace,
+          verb: a.verb,
+          resource: a.resource
+        }
+      }
+    };
+    const headers = {
+      'Content-Type': 'application/json',
+      'Accept': 'application/json'
+    };
+    if (token) {
+      headers['Authorization'] = `Bearer ${token}`;
     }
-    const json = await res.json();
-    const count = Array.isArray(json.items) ? json.items.length : 0;
-    return {ok: true, count, method: 'raw'};
-  } catch (e) {
-    return {ok: false, error: `Raw pod list error: ${e.message || e}`};
+    try {
+      const res = await fetch(url,
+          {method: 'POST', headers, body: JSON.stringify(body), agent});
+      const json = await res.json().catch(() => ({}));
+      const allowed = json?.status?.allowed === true;
+      results.push({
+        action: `${a.verb} ${a.resource}`,
+        allowed,
+        reason: json?.status?.reason || null
+      });
+    } catch (e) {
+      results.push({
+        action: `${a.verb} ${a.resource}`,
+        allowed: false,
+        error: e.message || String(e)
+      });
+    }
   }
+  return results;
+}
+
+function isNetworkError(err) {
+  const code = err?.code || err?.cause?.code;
+  return ['ECONNREFUSED', 'ETIMEDOUT', 'ENETUNREACH', 'EHOSTUNREACH',
+    'ECONNRESET'].includes(code);
+}
+
+async function rawListPods(namespace) {
+  if (!namespace) {
+    return {ok: false, error: 'No namespace provided to rawListPods'};
+  }
+  const explicit = process.env.VITE_K8S_API;
+  const inClusterBase = buildInClusterBaseURL();
+  // If USE_INCLUSTER_API=true force in-cluster
+  const preferInCluster = process.env.USE_INCLUSTER_API === 'true';
+  const bases = preferInCluster ? [inClusterBase, explicit] : [explicit,
+    inClusterBase];
+  let lastNetworkErr;
+  for (const base of bases) {
+    if (!base) {
+      continue;
+    }
+    const url = `${base}/api/v1/namespaces/${namespace}/pods?limit=1`;
+    let ca;
+    let agent;
+    try {
+      ca = fs.readFileSync(SA_CA_PATH);
+    } catch {
+    }
+    const token = readServiceAccountToken();
+    const headers = {};
+    if (token) {
+      headers['Authorization'] = `Bearer ${token}`;
+    }
+    headers['Accept'] = 'application/json';
+    const skipVerify = process.env.SKIP_K8S_TLS_VERIFY === 'true';
+    agent = new https.Agent({rejectUnauthorized: !skipVerify && !!ca, ca});
+    try {
+      const res = await fetch(url, {headers, agent});
+      if (!res.ok) {
+        const text = await res.text();
+        console.error('[preflight] rawListPods HTTP failure',
+            {base, status: res.status, body: text});
+        return {
+          ok: false,
+          error: `Raw pod list HTTP ${res.status}: ${text}`,
+          base,
+          status: res.status
+        };
+      }
+      const json = await res.json();
+      const count = Array.isArray(json.items) ? json.items.length : 0;
+      return {
+        ok: true,
+        count,
+        method: `raw(${base === explicit ? 'explicit' : 'incluster'})`,
+        base
+      };
+    } catch (e) {
+      console.error('[preflight] rawListPods fetch error',
+          {base, message: e.message, code: e.code, causeCode: e?.cause?.code});
+      if (isNetworkError(e)) {
+        // Continue to next base, but keep last network error details for final message if all fail
+        lastNetworkErr = {
+          message: e.message,
+          code: e.code || e?.cause?.code,
+          base
+        };
+        continue;
+      }
+      return {
+        ok: false,
+        error: `Raw pod list error: ${e.message || e}`,
+        code: e.code || e?.cause?.code,
+        base
+      };
+    }
+  }
+  if (lastNetworkErr) {
+    return {
+      ok: false,
+      error: `Network error (${lastNetworkErr.code
+      || 'UNKNOWN'}): ${lastNetworkErr.message}`,
+      base: lastNetworkErr.base
+    };
+  }
+  return {
+    ok: false,
+    error: 'All base URL attempts failed (explicit/in-cluster).',
+    base: bases.filter(Boolean).join(',')
+  };
 }
 
 async function listPodsInNamespace(kc, namespace) {
@@ -235,22 +355,26 @@ app.post('/api/run-job', async (req, res) => {
     const kc = buildK8sClient();
     const connError = await validateK8sConnectivity(kc, namespace);
     if (connError) {
+      console.error('[run-job] Connectivity preflight failed',
+          {namespace, error: connError});
       res.status(503).send(`Connectivity preflight failed: ${connError}`);
       return;
     }
     const podListResult = await listPodsInNamespace(kc, namespace);
     if (!podListResult.ok) {
+      console.error('[run-job] Namespace pod list failed',
+          {namespace, error: podListResult.error});
       res.status(503).send(
           `Failed to list pods in namespace '${namespace}': ${podListResult.error}`);
       return;
     }
     console.log(
         `[preflight] Pod list succeeded via ${podListResult.method}, count=${podListResult.count}`);
-
     const jobName = await runK8sJob(kc, namespace, job);
     res.status(200).json({message: 'Job started', jobName, namespace});
   } catch (err) {
-    console.error('Job start error:', err);
+    console.error('Job start error:',
+        {message: err?.message, code: err?.code, stack: err?.stack});
     res.status(500).send(`Failed to start job: ${err}`);
   }
 });
