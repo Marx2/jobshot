@@ -4,7 +4,7 @@ export interface Job {
   container: string;
   entrypoint: string[]; // <-- Added entrypoint field
   parameters: string[];
-  namespace?: string;
+  namespace: string; // required now
 }
 
 export interface JobsConfig {

@@ -20,7 +20,11 @@ export function useJobs() {
   }, []);
 
   const runJob = async (job: Job) => {
-    const confirmed = window.confirm(`Are you sure to run ${job.name}?`);
+    if (!job.namespace) {
+      alert('Job is missing required namespace.');
+      return;
+    }
+    const confirmed = window.confirm(`Run job ${job.name} in namespace ${job.namespace}?`);
     if (!confirmed) return;
     try {
       const response = await fetch('/api/run-job', {

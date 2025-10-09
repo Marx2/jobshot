@@ -3,8 +3,9 @@ jobs:
   - name: "Test container"
     description: "Run a netshoot test container."
     container: "nicolaka/netshoot"
-    entrypoint: ["/bin/sh echo '--- System Load ---'; uptime; echo '\n--- Listening Sockets ---'; ss -tuln", "-c"]
-    parameters: []
+    entrypoint: ["/bin/sh", "-c"]
+    parameters:
+      - "echo '--- System Load ---'; uptime; echo '\n--- Listening Sockets ---'; ss -tuln"
     namespace: "pfire"
   - name: "Backup Database"
     description: "Run a one-time backup of the main database."

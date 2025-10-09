@@ -2,15 +2,15 @@ import express from 'express';
 import bodyParser from 'body-parser';
 import path from 'path';
 import {fileURLToPath} from 'url';
-import {
-  BatchV1Api,
-  CoreV1Api,
-  KubeConfig,
-  VersionApi
-} from '@kubernetes/client-node';
+import {BatchV1Api, CoreV1Api, KubeConfig} from '@kubernetes/client-node';
 import dotenv from 'dotenv';
 import fs from 'fs';
 import yaml from 'js-yaml';
+import https from 'https';
+
+// Paths for in-cluster service account
+const SA_TOKEN_PATH = '/var/run/secrets/kubernetes.io/serviceaccount/token';
+const SA_CA_PATH = '/var/run/secrets/kubernetes.io/serviceaccount/ca.crt';
 
 dotenv.config();
 
@@ -63,50 +63,97 @@ function validateJobParams(job, apiServer, token, namespace) {
   return null;
 }
 
-const MIN_SUPPORTED_MAJOR = 1;
-const MIN_SUPPORTED_MINOR = 31; // Require Kubernetes 1.31+
-
-function isVersionSupported(info) {
-  if (!info) {
-    return false;
-  }
-  const major = parseInt((info.major || '').replace(/[^0-9]/g, ''), 10);
-  const minor = parseInt((info.minor || '').replace(/[^0-9]/g, ''), 10);
-  if (isNaN(major) || isNaN(minor)) {
-    return false;
-  }
-  if (major > MIN_SUPPORTED_MAJOR) {
-    return true;
-  }
-  if (major < MIN_SUPPORTED_MAJOR) {
-    return false;
-  }
-  return minor >= MIN_SUPPORTED_MINOR;
+// Connectivity check now only attempts to fetch the cluster version.
+async function validateK8sConnectivity(kc, namespace) {
+  const result = await rawListPods(namespace || 'kube-system');
+  return result.ok ? null : result.error;
 }
 
-// Connectivity check now only attempts to fetch the cluster version.
-async function validateK8sConnectivity(kc) {
+function readServiceAccountToken() {
   try {
-    try {
-      const versionClient = kc.makeApiClient(VersionApi);
-      const versionResp = await versionClient.getCode();
-      const versionInfo = versionResp.body || versionResp;
-      const supported = isVersionSupported(versionInfo);
-      console.log('Kubernetes version info:', versionInfo);
-      if (!supported) {
-        return `Unsupported Kubernetes version ${versionInfo.major}.${versionInfo.minor}. Minimum required is ${MIN_SUPPORTED_MAJOR}.${MIN_SUPPORTED_MINOR}`;
-      }
-    } catch (verErr) {
-      console.warn(
-          'Failed to retrieve cluster version during connectivity test.',
-          verErr.message || verErr
-      );
-      // If version cannot be fetched we still proceed (treat as soft warning)
-    }
+    return fs.readFileSync(SA_TOKEN_PATH, 'utf8').trim();
+  } catch {
     return null;
+  }
+}
+
+function buildInClusterBaseURL() {
+  const host = process.env.KUBERNETES_SERVICE_HOST;
+  const port = process.env.KUBERNETES_SERVICE_PORT;
+  if (host && port) {
+    return `https://${host}:${port}`;
+  }
+  return null;
+}
+
+async function rawListPods(namespace) {
+  if (!namespace) {
+    return {
+      ok: false,
+      error: 'No namespace provided to rawListPods'
+    };
+  }
+  // Prefer explicit apiServer env (external cluster) else in-cluster base
+  const explicit = process.env.VITE_K8S_API;
+  const base = explicit || buildInClusterBaseURL();
+  if (!base) {
+    return {
+      ok: false,
+      error: 'No Kubernetes API base URL (VITE_K8S_API or in-cluster env)'
+    };
+  }
+  const url = `${base}/api/v1/namespaces/${namespace}/pods?limit=1`;
+  let ca;
+  let agent;
+  try {
+    ca = fs.readFileSync(SA_CA_PATH);
+  } catch {
+  }
+  const token = readServiceAccountToken();
+  const headers = {};
+  if (token) {
+    headers['Authorization'] = `Bearer ${token}`;
+  }
+  headers['Accept'] = 'application/json';
+  const skipVerify = process.env.SKIP_K8S_TLS_VERIFY === 'true';
+  agent = new https.Agent({rejectUnauthorized: !skipVerify && !!ca, ca});
+  try {
+    const res = await fetch(url, {headers, agent});
+    if (!res.ok) {
+      const text = await res.text();
+      return {ok: false, error: `Raw pod list HTTP ${res.status}: ${text}`};
+    }
+    const json = await res.json();
+    const count = Array.isArray(json.items) ? json.items.length : 0;
+    return {ok: true, count, method: 'raw'};
+  } catch (e) {
+    return {ok: false, error: `Raw pod list error: ${e.message || e}`};
+  }
+}
+
+async function listPodsInNamespace(kc, namespace) {
+  // Try raw first to avoid client bug; fall back to client if raw fails for non-parameter reasons
+  const raw = await rawListPods(namespace);
+  if (raw.ok) {
+    return raw;
+  }
+  if (/parameter/i.test(raw.error)) { // improbable, proceed to client
+    console.warn('[preflight] raw list failed param error, trying client:',
+        raw.error);
+  } else if (!/HTTP 403|forbidden|Unauthorized/i.test(raw.error)) {
+    console.warn('[preflight] raw list failed, attempting client fallback:',
+        raw.error);
+  } else {
+    return raw; // Permission issue - no need to call client
+  }
+  try {
+    const core = kc.makeApiClient(CoreV1Api);
+    const resp = await core.listNamespacedPod(namespace);
+    const count = resp?.body?.items?.length ?? 0;
+    return {ok: true, count, method: 'client'};
   } catch (err) {
-    console.error('Kubernetes connectivity error:', err);
-    return `Failed to connect to Kubernetes API: ${err.message || err}`;
+    const msg = err?.response?.body?.message || err?.message || String(err);
+    return {ok: false, error: msg};
   }
 }
 
@@ -125,23 +172,6 @@ function buildK8sClient() {
     kc.loadFromCluster();
   }
   return kc;
-}
-
-// New function: attempt to list pods in the namespace (limit 1) to validate access & namespace existence.
-async function listPodsInNamespace(kc, namespace) {
-  const core = kc.makeApiClient(CoreV1Api);
-  try {
-    // listNamespacedPod(namespace, pretty, allowWatchBookmarks, _continue, fieldSelector, labelSelector, limit)
-    const resp = await core.listNamespacedPod(namespace, undefined, undefined,
-        undefined, undefined, undefined, 1);
-    const count = resp?.body?.items?.length ?? 0;
-    return {ok: true, count};
-  } catch (err) {
-    console.error(`Failed to list pods in namespace '${namespace}':`,
-        err?.response?.body || err?.message || err);
-    const message = err?.response?.body?.message || err?.message || String(err);
-    return {ok: false, error: message};
-  }
 }
 
 async function runK8sJob(kc, namespace, job) {
@@ -203,19 +233,19 @@ app.post('/api/run-job', async (req, res) => {
 
   try {
     const kc = buildK8sClient();
-    const connError = await validateK8sConnectivity(kc);
+    const connError = await validateK8sConnectivity(kc, namespace);
     if (connError) {
-      console.error('Connectivity validation failed:', connError);
-      res.status(400).send(connError);
+      res.status(503).send(`Connectivity preflight failed: ${connError}`);
       return;
     }
-
     const podListResult = await listPodsInNamespace(kc, namespace);
     if (!podListResult.ok) {
       res.status(503).send(
           `Failed to list pods in namespace '${namespace}': ${podListResult.error}`);
       return;
     }
+    console.log(
+        `[preflight] Pod list succeeded via ${podListResult.method}, count=${podListResult.count}`);
 
     const jobName = await runK8sJob(kc, namespace, job);
     res.status(200).json({message: 'Job started', jobName, namespace});
