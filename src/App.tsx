@@ -16,6 +16,7 @@ function App() {
                 <div className="job-details">
                   <span className="job-name">{job.name}</span>
                   <span className="job-desc">{job.description}</span>
+                  <span className="job-namespace">Namespace: {job.namespace}</span>
                 </div>
                 <button className="run-btn" onClick={() => runJob(job)}>Run</button>
               </li>
