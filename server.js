@@ -216,18 +216,33 @@ async function runK8sJob(kc, namespace, job) {
   return k8sJob.metadata.name;
 }
 
+function logClusterClientDetails(kc, token) {
+  const cluster = kc.getCurrentCluster();
+  const user = kc.getCurrentUser();
+  let authDetails = '';
+  if (user) {
+    if (user.token) {
+      authDetails = 'Auth method: Bearer token';
+    } else if (user.certFile && user.keyFile) {
+      authDetails = `Auth method: Client certificate (cert: ${user.certFile}, key: ${user.keyFile})`;
+    } else if (user.certData && user.keyData) {
+      authDetails = 'Auth method: Client certificate (inline data)';
+    } else if (user.username && user.password) {
+      authDetails = 'Auth method: Basic auth (username/password)';
+    } else {
+      authDetails = 'Auth method: Unknown';
+    }
+  } else {
+    authDetails = 'No user info found';
+  }
+  console.log('Cluster API address:', cluster ? cluster.server : '[unknown]');
+  console.log(authDetails);
+}
+
 app.post('/api/run-job', async (req, res) => {
   const job = req.body;
   const {apiServer, token} = getK8sConfig();
   let namespace = job.namespace || 'default';
-
-  // Diagnostic logging
-  console.log('Received job namespace:', namespace);
-  console.log('Type:', typeof namespace, 'Length:', namespace.length);
-  console.log('Char codes:', Array.from(namespace).map(c => c.charCodeAt(0)));
-  console.log('Full job object:', job);
-  console.log('Cluster address (apiServer):', apiServer);
-  console.log('Token:', token ? '[REDACTED]' : 'undefined');
 
   // Parameter validation
   const paramError = validateJobParams(job, apiServer, token, namespace);
@@ -244,6 +259,12 @@ app.post('/api/run-job', async (req, res) => {
       res.status(400).send(connError);
       return;
     }
+    // Diagnostic logging
+    console.log('Received job namespace:', namespace);
+    console.log('Token:', token ? '[REDACTED]' : 'undefined');
+    logClusterClientDetails(kc, token);
+    console.log('Full job object:', job);
+
     const jobName = await runK8sJob(kc, namespace, job);
     res.status(200).json({message: 'Job started', jobName, namespace});
   } catch (err) {
@@ -282,3 +303,4 @@ process.on('uncaughtException', (err) => {
 app.listen(port, () => {
   console.log(`Jobshot container app listening on port ${port}`);
 });
+
