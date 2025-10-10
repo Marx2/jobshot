@@ -1,10 +1,10 @@
 # Example jobs.yaml
 jobs:
   - name: "Test container"
-    description: "Run a netshoot test container."
-    container: "nicolaka/netshoot"
-    entrypoint: ["/bin/sh echo '--- System Load ---'; uptime; echo '\n--- Listening Sockets ---'; ss -tuln", "-c"]
-    parameters: []
+    description: "Run an alpine echo."
+    container: "alpine:latest"
+    entrypoint: ["/bin/sh", "-c"]
+    parameters: ["echo 'Job completed successfully!'"]
     namespace: "pfire"
   - name: "Backup Database"
     description: "Run a one-time backup of the main database."
