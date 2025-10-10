@@ -142,16 +142,6 @@ async function validateK8sConnectivity(kc, namespace) {
     }
 
     const coreApi = kc.makeApiClient(CoreV1Api);
-    const nsList = await coreApi.listNamespace();
-    const listObj = nsList.body || nsList;
-    const items = listObj.items;
-    if (!items || !Array.isArray(items)) {
-      console.error('Unexpected response from listNamespace:',
-          JSON.stringify(listObj, null, 2));
-      return 'Kubernetes API connectivity check failed: Unexpected response format from listNamespace.';
-    }
-    const namespaceNames = items.map(ns => ns?.metadata?.name || '[unknown]');
-    console.log('Connected to Kubernetes cluster. Namespaces:', namespaceNames);
 
     try {
       const podsResp = await safeListPods(coreApi, namespace);
