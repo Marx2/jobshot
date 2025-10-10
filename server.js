@@ -89,19 +89,8 @@ async function safeListPods(coreApi, namespace) {
   if (!ns) {
     throw new Error('Namespace is empty after trimming.');
   }
-  try {
-    return await coreApi.listNamespacedPod({namespace: ns});
-  } catch (e1) {
-    const msg1 = String(e1);
-    if (/Required parameter namespace/.test(msg1)) {
-      throw e1;
-    }
-    try {
-      return await coreApi.listNamespacedPod(ns);
-    } catch (e2) {
-      throw e2;
-    }
-  }
+  // Always use object form, do not set watch
+  return await coreApi.listNamespacedPod({namespace: ns});
 }
 
 async function safeCreateJob(batchApi, namespace, k8sJob) {
@@ -109,19 +98,8 @@ async function safeCreateJob(batchApi, namespace, k8sJob) {
   if (!ns) {
     throw new Error('Namespace is empty after trimming (job creation).');
   }
-  try {
-    return await batchApi.createNamespacedJob({namespace: ns, body: k8sJob});
-  } catch (e1) {
-    const msg1 = String(e1);
-    if (/Required parameter namespace/.test(msg1)) {
-      throw e1;
-    }
-    try {
-      return await batchApi.createNamespacedJob(ns, k8sJob);
-    } catch (e2) {
-      throw e2;
-    }
-  }
+  // Always use object form, do not set watch
+  return await batchApi.createNamespacedJob({namespace: ns, body: k8sJob});
 }
 
 async function validateK8sConnectivity(kc, namespace) {
@@ -303,4 +281,3 @@ process.on('uncaughtException', (err) => {
 app.listen(port, () => {
   console.log(`Jobshot container app listening on port ${port}`);
 });
-
