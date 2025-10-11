@@ -1,6 +1,24 @@
 import './App.css';
 import {useJobs} from './useJobs';
 
+function JobStatusDisplay({status}: { status?: import('./configLoader').JobStatus }) {
+  if (!status) {
+    return <span className="job-status loading">Loading...</span>;
+  }
+
+  if (status.error) {
+    return <span className="job-status error">Error</span>;
+  }
+
+  if (!status.exists) {
+    return <span className="job-status not-found">Not Found</span>;
+  }
+
+  return <span className={`job-status ${status.status.toLowerCase()}`}>
+    {status.status}
+  </span>;
+}
+
 function App() {
   const {jobs, loading, error, runJob} = useJobs();
 
@@ -17,6 +35,7 @@ function App() {
                   <span className="job-name">{job.name}</span>
                   <span className="job-desc">{job.description}</span>
                 </div>
+                <JobStatusDisplay status={job.status}/>
                 <button className="run-btn" onClick={() => runJob(job)}>Run</button>
               </li>
           ))}
