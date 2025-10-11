@@ -102,6 +102,88 @@ async function safeCreateJob(batchApi, namespace, k8sJob) {
   return await batchApi.createNamespacedJob({namespace: ns, body: k8sJob});
 }
 
+async function checkExistingJob(batchApi, namespace, jobName) {
+  try {
+    const jobsResp = await batchApi.listNamespacedJob({
+      namespace: namespace,
+      labelSelector: `jobshot/name=${jobName}`
+    });
+    const jobs = jobsResp.body.items || [];
+    return jobs.length > 0 ? jobs[0] : null;
+  } catch (err) {
+    // If job doesn't exist or other error, return null
+    console.warn(`Could not check for existing job ${jobName}:`, err.message);
+    return null;
+  }
+}
+
+async function deleteJob(batchApi, namespace, jobName) {
+  try {
+    await batchApi.deleteNamespacedJob({
+      namespace: namespace,
+      name: jobName,
+      body: {
+        propagationPolicy: 'Background'
+      }
+    });
+    console.log(`Deleted job: ${jobName}`);
+  } catch (err) {
+    console.warn(`Could not delete job ${jobName}:`, err.message);
+    throw err;
+  }
+}
+
+function isJobRunning(job) {
+  const status = job.status;
+  if (!status) {
+    return false;
+  }
+
+  // Job is running if it has active pods
+  if (status.active && status.active > 0) {
+    return true;
+  }
+
+  // Job is not running if it's completed (succeeded or failed)
+  if (status.succeeded || status.failed) {
+    return false;
+  }
+
+  // If no active pods and not completed, check conditions
+  const conditions = status.conditions || [];
+  const runningCondition = conditions.find(
+      c => c.type === 'Running' && c.status === 'True');
+  return !!runningCondition;
+}
+
+function getJobStatus(job) {
+  const status = job.status;
+  if (!status) {
+    return 'Unknown';
+  }
+
+  if (status.active && status.active > 0) {
+    return 'Running';
+  }
+
+  if (status.succeeded && status.succeeded > 0) {
+    return 'Succeeded';
+  }
+
+  if (status.failed && status.failed > 0) {
+    return 'Failed';
+  }
+
+  const conditions = status.conditions || [];
+  const suspendedCondition = conditions.find(
+      c => c.type === 'Suspended' && c.status === 'True');
+  if (suspendedCondition) {
+    return 'Suspended';
+  }
+
+  return 'Pending';
+}
+
 async function validateK8sConnectivity(kc, namespace) {
   try {
     try {
@@ -163,6 +245,27 @@ function buildK8sClient() {
 async function runK8sJob(kc, namespace, job) {
   const batchApi = kc.makeApiClient(BatchV1Api);
   const nameSlug = job.name.toLowerCase().replace(/\s+/g, '-');
+
+  // Check for existing job first
+  const existingJob = await checkExistingJob(batchApi, namespace, nameSlug);
+  if (existingJob) {
+    const jobStatus = getJobStatus(existingJob);
+    console.log(`Found existing job: ${nameSlug} with status: ${jobStatus}`);
+
+    if (isJobRunning(existingJob)) {
+      throw new Error(
+          `Job "${job.name}" is already running. Please wait for it to complete before starting a new instance.`);
+    }
+
+    // If job is completed (succeeded or failed), delete it before creating new one
+    if (jobStatus === 'Succeeded' || jobStatus === 'Failed') {
+      console.log(`Deleting completed job: ${nameSlug}`);
+      await deleteJob(batchApi, namespace, nameSlug);
+      // Wait a moment for deletion to propagate
+      await new Promise(resolve => setTimeout(resolve, 1000));
+    }
+  }
+
   const k8sJob = {
     apiVersion: 'batch/v1',
     kind: 'Job',
@@ -190,6 +293,7 @@ async function runK8sJob(kc, namespace, job) {
       backoffLimit: 1,
     },
   };
+
   await safeCreateJob(batchApi, namespace, k8sJob);
   return k8sJob.metadata.name;
 }
