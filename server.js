@@ -127,7 +127,7 @@ async function validateK8sConnectivity(kc, namespace) {
       const podItems = podList.items;
       if (Array.isArray(podItems)) {
         const podNames = podItems.map(p => p?.metadata?.name || '[unknown]');
-        console.log(`Pods in namespace '${namespace}':`, podNames);
+        console.log("Pods in namespace '%s':", namespace, podNames);
       } else {
         console.warn('Unexpected pod list structure for namespace', namespace);
       }
