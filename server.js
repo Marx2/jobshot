@@ -132,7 +132,7 @@ async function validateK8sConnectivity(kc, namespace) {
         console.warn('Unexpected pod list structure for namespace', namespace);
       }
     } catch (podErr) {
-      console.warn(`Could not list pods in namespace '${namespace}':`,
+      console.warn("Could not list pods in namespace '%s':", namespace,
           podErr.body?.message || podErr.message || podErr);
     }
     return null;
