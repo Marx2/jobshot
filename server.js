@@ -104,15 +104,45 @@ async function safeCreateJob(batchApi, namespace, k8sJob) {
 
 async function checkExistingJob(batchApi, namespace, jobName) {
   try {
+    console.log(
+        `DEBUG: Checking for existing job "${jobName}" in namespace "${namespace}"`);
+
     const jobsResp = await batchApi.listNamespacedJob({
       namespace: namespace,
       labelSelector: `jobshot/name=${jobName}`
     });
-    const jobs = jobsResp.body.items || [];
+
+    console.log(`DEBUG: Raw response type:`, typeof jobsResp);
+    console.log(`DEBUG: Response keys:`, Object.keys(jobsResp || {}));
+    console.log(`DEBUG: Response body type:`, typeof jobsResp?.body);
+    console.log(`DEBUG: Response body keys:`,
+        Object.keys(jobsResp?.body || {}));
+
+    // Handle different response structures - sometimes data is in body, sometimes directly in response
+    const jobList = jobsResp.body || jobsResp;
+    console.log(`DEBUG: Job list type:`, typeof jobList);
+    console.log(`DEBUG: Job list keys:`, Object.keys(jobList || {}));
+    console.log(`DEBUG: Job list items type:`, typeof jobList?.items);
+    console.log(`DEBUG: Job list items length:`, jobList?.items?.length);
+
+    const jobs = jobList?.items || [];
+    console.log(
+        `DEBUG: Found ${jobs.length} jobs matching labelSelector "jobshot/name=${jobName}"`);
+
+    if (jobs.length > 0) {
+      console.log(`DEBUG: First job metadata:`, jobs[0]?.metadata);
+      console.log(`DEBUG: First job status:`, jobs[0]?.status);
+    }
+
     return jobs.length > 0 ? jobs[0] : null;
   } catch (err) {
     // If job doesn't exist or other error, return null
-    console.warn(`Could not check for existing job ${jobName}:`, err.message);
+    console.error(`DEBUG: Error checking for existing job ${jobName}:`, {
+      message: err.message,
+      code: err.code,
+      statusCode: err.statusCode,
+      body: err.body
+    });
     return null;
   }
 }
