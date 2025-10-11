@@ -355,6 +355,41 @@ app.post('/api/run-job', async (req, res) => {
   }
 });
 
+app.get('/api/job-status/:jobName', async (req, res) => {
+  const {jobName} = req.params;
+  const namespace = req.query.namespace || 'default';
+
+  try {
+    const kc = buildK8sClient();
+    const batchApi = kc.makeApiClient(BatchV1Api);
+
+    const nameSlug = jobName.toLowerCase().replace(/\s+/g, '-');
+    const existingJob = await checkExistingJob(batchApi, namespace, nameSlug);
+
+    if (!existingJob) {
+      res.json({status: 'Not Found', exists: false});
+      return;
+    }
+
+    const status = getJobStatus(existingJob);
+    const isRunning = isJobRunning(existingJob);
+
+    res.json({
+      status,
+      exists: true,
+      isRunning,
+      details: {
+        active: existingJob.status?.active || 0,
+        succeeded: existingJob.status?.succeeded || 0,
+        failed: existingJob.status?.failed || 0
+      }
+    });
+  } catch (err) {
+    console.error('Job status error:', err);
+    res.status(500).json({error: `Failed to get job status: ${err.message}`});
+  }
+});
+
 app.get('/api/jobs', (req, res) => {
   try {
     const jobsYamlPath = path.join(__dirname, 'config', 'jobs.yaml');

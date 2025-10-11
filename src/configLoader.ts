@@ -5,6 +5,19 @@ export interface Job {
   entrypoint: string[]; // <-- Added entrypoint field
   parameters: string[];
   namespace?: string;
+  status?: JobStatus; // Added status field
+}
+
+export interface JobStatus {
+  status: string;
+  exists: boolean;
+  isRunning: boolean;
+  details?: {
+    active: number;
+    succeeded: number;
+    failed: number;
+  };
+  error?: string;
 }
 
 export interface JobsConfig {
