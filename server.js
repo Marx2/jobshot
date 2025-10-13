@@ -324,6 +324,7 @@ async function runK8sJob(kc, namespace, job) {
     },
   };
 
+  k8sJob.spec.template.spec.imagePullSecrets = [{name: 'regcred'}];
   await safeCreateJob(batchApi, namespace, k8sJob);
   return k8sJob.metadata.name;
 }
