@@ -285,5 +285,3 @@ docker build -t ghcr.io/your-org/jobshot:latest .
 MIT
 
 ---
-
-For more details, open an issue or contact the maintainer.
