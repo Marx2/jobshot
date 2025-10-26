@@ -6,9 +6,11 @@ on:
       - "master"
     tags:
       - '*'
-    permissions:
-      packages: write
-      contents: read
+
+permissions:
+  packages: write
+  contents: read
+
 env:
   REGISTRY: ghcr.io
   IMAGE_NAME: ${{ github.repository }}
@@ -47,6 +49,8 @@ jobs:
             type=semver,pattern={{major}}.{{minor}}
             type=semver,pattern={{major}}
             type=sha
+            type=raw,value=latest,enable={{is_default_branch}}
+            type=raw,value=${{ steps.semantic_release.outputs.new_release_version }},enable=${{ steps.semantic_release.outputs.new_release_published == 'true' }}
       - name: Cache Docker layers
         uses: actions/cache@v4
         with:
