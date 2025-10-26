@@ -15,31 +15,50 @@ Jobshot is a JavaScript/TypeScript application that provides a UI for executing 
 - Define container images
 - Provide explicit container entrypoint (command) via `entrypoint` array
 - Save job configurations to a config file
+- **Edit job container image & parameters just before execution (Run Modal)** ← new
 
-## Prerequisites
+## Quick Run Workflow (Editable Run Modal)
 
-- Node.js (v18+ recommended)
-- Yarn
-- Access to a Kubernetes cluster
+Clicking the "Run" button for a job now opens a modal instead of an immediate confirmation. The
+modal shows:
 
-> **Note:** All communication with Kubernetes is handled directly via the Kubernetes SDK library.
-> You do **not** need `kubectl` installed when running *inside* the cluster; for local development you
-> only need a token / API server URL.
+- Name (read-only)
+- Namespace (read-only)
+- Container Image (editable text field)
+- Parameters (multi-line textarea, one argument per line)
 
-## Installation
+You can:
 
-Clone the repository:
+- Change the container image (must be non-empty)
+- Add/remove/update parameters (blank lines are ignored)
+- Reset back to defaults from `config/jobs.yaml`
+- Cancel without running
+- Press "Run" to submit your overrides
 
+The backend receives the modified `container` and `parameters` values and creates the Kubernetes Job
+with:
+
+- `spec.template.spec.containers[0].command` from original `entrypoint` (unchanged in the modal)
+- `spec.template.spec.containers[0].image` from edited container field
+- `spec.template.spec.containers[0].args` from edited parameters list
+
+Nothing is persisted back into `jobs.yaml` by this UI; overrides apply only to the single run.
+
+Example edit:
+If original parameters were:
 ```
-git clone https://github.com/your-username/jobshot.git
-cd jobshot
+--tickers=MSFT
+--metrics=./custom-metrics.yaml
 ```
 
-Install dependencies:
+You could change them to:
+```
+--tickers=AAPL,MSFT,GOOG
+--metrics=/data/alt-metrics.yaml
+--date=2025-10-26
+```
 
-```
-yarn install
-```
+Each non-empty line becomes one container argument.
 
 ## Job Configuration
 
@@ -70,7 +89,7 @@ jobs:
     entrypoint: ["/bin/sh", "-c"]
     parameters:
       - "./backup.sh --db=main"
-    namespace: "pfire"
+    namespace: "jobshot"
 ```
 
 The frontend automatically loads this file via the backend endpoint `/api/jobs`.
@@ -233,7 +252,7 @@ Build and run locally (external mode example):
 
 ```sh
 docker build -t jobshot .
-Docker run -p 3000:3000 --env-file .env jobshot
+docker run -p 3000:3000 --env-file .env jobshot
 ```
 
 In-cluster you typically only need:
@@ -249,6 +268,7 @@ docker build -t ghcr.io/your-org/jobshot:latest .
 - Backend exposes `/api/run-job` creating a Kubernetes Job object with:
     - `spec.template.spec.containers[0].command` from `entrypoint`
     - `spec.template.spec.containers[0].args` from `parameters`
+  - `spec.template.spec.containers[0].image` from (possibly edited) container field
 - Auth selection:
     - External: environment variables
     - In-cluster: ServiceAccount (auto token rotation)

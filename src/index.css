@@ -66,3 +66,405 @@ button:focus-visible {
     background-color: #f9f9f9;
   }
 }
+
+/* --- Merged styles from App.css (unified stylesheet) --- */
+#root {
+  max-width: 1280px;
+  margin: 0 auto;
+  padding: 2rem;
+  text-align: center;
+}
+
+.logo {
+  height: 6em;
+  padding: 1.5em;
+  will-change: filter;
+  transition: filter 300ms;
+}
+
+.logo:hover {
+  filter: drop-shadow(0 0 2em #646cffaa);
+}
+
+.logo.react:hover {
+  filter: drop-shadow(0 0 2em #61dafbaa);
+}
+
+@keyframes logo-spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  a:nth-of-type(2) .logo {
+    animation: logo-spin infinite 20s linear;
+  }
+}
+
+.card {
+  padding: 2em;
+}
+
+.read-the-docs {
+  color: #888;
+}
+
+.app-container {
+  max-width: 700px;
+  margin: 40px auto;
+  padding: 24px;
+  background: #fff;
+  border-radius: 16px;
+  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.08);
+  font-family: 'Segoe UI', 'Roboto', 'Arial', sans-serif;
+}
+
+.app-container h1 {
+  color: #2c3e50;
+  margin-bottom: 32px;
+  font-weight: 600;
+}
+
+.app-container.error {
+  color: #e74c3c;
+  text-align: center;
+  font-size: 18px;
+}
+
+.job-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.job-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 20px;
+  margin-bottom: 12px;
+  background: #f8f9fa;
+  border-radius: 8px;
+  border: 1px solid #e9ecef;
+  transition: all 0.2s ease;
+}
+
+.job-item:hover {
+  background: #f1f3f4;
+  border-color: #dee2e6;
+}
+
+.job-details {
+  flex: 1;
+  text-align: left;
+}
+
+.job-name {
+  display: block;
+  font-weight: 600;
+  color: #2c3e50;
+  font-size: 16px;
+  margin-bottom: 4px;
+}
+
+.job-desc {
+  display: block;
+  color: #6c757d;
+  font-size: 14px;
+}
+
+.job-status {
+  min-width: 100px;
+  padding: 6px 12px;
+  border-radius: 20px;
+  font-size: 12px;
+  font-weight: 600;
+  text-align: center;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin: 0 16px;
+}
+
+.job-status.loading {
+  background: #e9ecef;
+  color: #6c757d;
+  animation: pulse 1.5s ease-in-out infinite;
+}
+
+.job-status.running {
+  background: #d4edda;
+  color: #155724;
+  border: 1px solid #c3e6cb;
+}
+
+.job-status.succeeded {
+  background: #d1ecf1;
+  color: #0c5460;
+  border: 1px solid #b6d4db;
+}
+
+.job-status.failed {
+  background: #f8d7da;
+  color: #721c24;
+  border: 1px solid #f1b0b7;
+}
+
+.job-status.pending {
+  background: #fff3cd;
+  color: #856404;
+  border: 1px solid #ffeaa7;
+}
+
+.job-status.suspended {
+  background: #e2e3e5;
+  color: #495057;
+  border: 1px solid #ced4da;
+}
+
+.job-status.not-found {
+  background: #f8f9fa;
+  color: #6c757d;
+  border: 1px solid #dee2e6;
+}
+
+.job-status.error {
+  background: #f8d7da;
+  color: #721c24;
+  border: 1px solid #f1b0b7;
+}
+
+.run-btn {
+  background: #007bff;
+  color: white;
+  border: none;
+  padding: 10px 20px;
+  border-radius: 6px;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  min-width: 80px;
+}
+
+.run-btn:hover {
+  background: #0056b3;
+  transform: translateY(-1px);
+}
+
+.run-btn:active {
+  transform: translateY(0);
+}
+
+@keyframes pulse {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.6;
+  }
+}
+
+.error {
+  color: #e53e3e;
+  text-align: center;
+  margin-top: 32px;
+  font-size: 1.1rem;
+}
+
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.45);
+  backdrop-filter: blur(2px);
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding: 60px 20px 20px;
+  z-index: 1000;
+}
+
+.modal {
+  width: 100%;
+  max-width: 560px;
+  background: #fff;
+  border-radius: 16px;
+  box-shadow: 0 8px 40px rgba(0, 0, 0, 0.18);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  font-family: inherit;
+}
+
+.modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 18px 24px;
+  border-bottom: 1px solid #e9ecef;
+}
+
+.modal-header h2 {
+  margin: 0;
+  font-size: 20px;
+  font-weight: 600;
+  color: #2c3e50;
+}
+
+.close-btn {
+  background: transparent;
+  border: none;
+  font-size: 24px;
+  line-height: 1;
+  cursor: pointer;
+  color: #6c757d;
+}
+
+.close-btn:hover {
+  color: #343a40;
+}
+
+.modal-body {
+  padding: 20px 24px 28px;
+}
+
+.field-group {
+  margin-bottom: 16px;
+  text-align: left;
+}
+
+.field-label {
+  display: block;
+  font-size: 13px;
+  font-weight: 600;
+  color: #495057;
+  margin-bottom: 6px;
+}
+
+.field-input, .field-textarea {
+  width: 100%;
+  max-width: 440px; /* Fixed: narrower width to fit modal */
+  border: 1px solid #ced4da;
+  border-radius: 6px;
+  padding: 10px 12px;
+  font-size: 14px;
+  font-family: inherit;
+  background: #fff;
+  color: #212529; /* Fixed: explicit dark text color for visibility */
+  transition: border-color .15s, box-shadow .15s;
+}
+
+.field-input:focus, .field-textarea:focus {
+  outline: none;
+  border-color: #80bdff;
+  box-shadow: 0 0 0 3px rgba(0, 123, 255, .25);
+}
+
+.read-only {
+  background: #f1f3f5;
+  color: #495057;
+}
+
+.field-textarea {
+  resize: vertical;
+  min-height: 120px;
+  line-height: 1.4;
+}
+
+.modal-actions {
+  display: flex;
+  gap: 12px;
+  justify-content: flex-end;
+  margin-top: 8px;
+}
+
+.primary-btn, .secondary-btn {
+  border: none;
+  padding: 10px 18px;
+  border-radius: 6px;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background .2s, transform .2s;
+}
+
+.primary-btn {
+  background: #28a745;
+  color: #fff;
+}
+
+.primary-btn:hover {
+  background: #218838;
+}
+
+.secondary-btn {
+  background: #e9ecef;
+  color: #212529;
+}
+
+.secondary-btn:hover {
+  background: #dde2e6;
+}
+
+.primary-btn:active, .secondary-btn:active {
+  transform: translateY(1px);
+}
+
+.form-error {
+  background: #f8d7da;
+  color: #721c24;
+  padding: 10px 12px;
+  border-radius: 6px;
+  font-size: 13px;
+  margin-bottom: 12px;
+  border: 1px solid #f1b0b7;
+  max-width: 440px; /* Fixed: consistent width with fields */
+}
+
+.hint {
+  font-size: 12px;
+  color: #6c757d;
+  margin-top: 12px;
+  max-width: 440px; /* Fixed: consistent width with fields */
+}
+
+body.modal-open {
+  overflow: hidden;
+}
+
+@media (max-width: 600px) {
+  .modal {
+    max-width: 100%;
+  }
+
+  .modal-overlay {
+    padding: 30px 10px 10px;
+  }
+
+  .field-input, .field-textarea, .form-error, .hint {
+    max-width: 100%; /* Mobile: full width */
+  }
+}
+
+@media (max-width: 600px) {
+  .app-container {
+    padding: 8px;
+  }
+
+  .job-item {
+    flex-direction: column;
+    align-items: stretch;
+    padding: 16px 10px;
+  }
+
+  .run-btn {
+    width: 100%;
+    margin-top: 12px;
+  }
+}
+
+/* --- End merged styles --- */
+

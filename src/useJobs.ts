@@ -84,11 +84,9 @@ export function useJobs() {
         }
       };
     }
-  }, [loading, jobs.length]);
+  }, [loading, jobs.length, updateJobStatuses, jobs]);
 
   const runJob = async (job: Job) => {
-    const confirmed = window.confirm(`Are you sure to run ${job.name}?`);
-    if (!confirmed) return;
     try {
       const response = await fetch('/api/run-job', {
         method: 'POST',
