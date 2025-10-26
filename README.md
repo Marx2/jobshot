@@ -15,7 +15,7 @@ Jobshot is a JavaScript/TypeScript application that provides a UI for executing 
 - Define container images
 - Provide explicit container entrypoint (command) via `entrypoint` array
 - Save job configurations to a config file
-- **Edit job container image & parameters just before execution (Run Modal)** ← new
+- Edit job container image & parameters just before execution (Run Modal)
 
 ## Quick Run Workflow (Editable Run Modal)
 
