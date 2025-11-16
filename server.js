@@ -60,6 +60,17 @@ function validateJobParams(job, apiServer, token, namespace) {
   if (!Array.isArray(job.parameters)) {
     return 'Job parameters must be an array.';
   }
+  // Basic resources validation if provided
+  if (job.resources) {
+    const r = job.resources;
+    if (!r.requests || !r.limits) {
+      return 'Resources must include both requests and limits.';
+    }
+    if (!r.requests.cpu || !r.requests.memory || !r.limits.cpu
+        || !r.limits.memory) {
+      return 'Resources must include cpu and memory for both requests and limits.';
+    }
+  }
   return null;
 }
 
@@ -315,7 +326,18 @@ async function runK8sJob(kc, namespace, job) {
             name: nameSlug,
             image: job.container,
             command: job.entrypoint,
-            args: job.parameters
+            args: job.parameters,
+            // Attach resources if present
+            resources: job.resources ? {
+              requests: {
+                cpu: job.resources.requests.cpu,
+                memory: job.resources.requests.memory
+              },
+              limits: {
+                cpu: job.resources.limits.cpu,
+                memory: job.resources.limits.memory
+              }
+            } : undefined
           }],
           restartPolicy: 'Never',
         },
@@ -357,7 +379,6 @@ app.post('/api/run-job', async (req, res) => {
   const {apiServer, token} = getK8sConfig();
   let namespace = job.namespace || 'default';
 
-  // Parameter validation
   const paramError = validateJobParams(job, apiServer, token, namespace);
   if (paramError) {
     res.status(400).send(paramError);
@@ -372,7 +393,7 @@ app.post('/api/run-job', async (req, res) => {
       res.status(400).send(connError);
       return;
     }
-    // Diagnostic logging
+
     console.log('Received job namespace:', namespace);
     console.log('Token:', token ? '[REDACTED]' : 'undefined');
     logClusterClientDetails(kc, token);
