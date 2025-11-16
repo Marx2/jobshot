@@ -6,6 +6,11 @@ export interface Job {
   parameters: string[];
   namespace?: string;
   status?: JobStatus; // Added status field
+  // Added optional Kubernetes resource requests/limits
+  resources?: {
+    requests: { cpu: string; memory: string };
+    limits: { cpu: string; memory: string };
+  };
 }
 
 export interface JobStatus {
