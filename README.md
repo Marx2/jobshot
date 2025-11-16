@@ -16,24 +16,17 @@ Jobshot is a JavaScript/TypeScript application that provides a UI for executing 
 - Provide explicit container entrypoint (command) via `entrypoint` array
 - Save job configurations to a config file
 - Edit job container image & parameters just before execution (Run Modal)
+- Define per-run CPU/memory resource requests & limits (optional)
 
 ## Quick Run Workflow (Editable Run Modal)
 
-Clicking the "Run" button for a job now opens a modal instead of an immediate confirmation. The
-modal shows:
+Clicking the "Run" button for a job now opens a modal, which shows:
 
 - Name (read-only)
 - Namespace (read-only)
 - Container Image (editable text field)
 - Parameters (multi-line textarea, one argument per line)
-
-You can:
-
-- Change the container image (must be non-empty)
-- Add/remove/update parameters (blank lines are ignored)
-- Reset back to defaults from `config/jobs.yaml`
-- Cancel without running
-- Press "Run" to submit your overrides
+- Resource requests/limits (defaults: requests cpu=250m memory=64Mi; limits cpu=500m memory=128Mi)
 
 The backend receives the modified `container` and `parameters` values and creates the Kubernetes Job
 with:
@@ -41,8 +34,10 @@ with:
 - `spec.template.spec.containers[0].command` from original `entrypoint` (unchanged in the modal)
 - `spec.template.spec.containers[0].image` from edited container field
 - `spec.template.spec.containers[0].args` from edited parameters list
+- `spec.template.spec.containers[0].resources` from modal (if provided)
 
-Nothing is persisted back into `jobs.yaml` by this UI; overrides apply only to the single run.
+Nothing is persisted back into `jobs.yaml` by this UI; overrides apply only to the single run (
+including resources).
 
 Example edit:
 If original parameters were:
@@ -77,6 +72,13 @@ Each job supports the following fields:
   entrypoint: [string, ...]   # Optional; becomes the container `command` (K8s)
   parameters: [string, ...]   # Optional; becomes container `args`
   namespace: string (optional; defaults to 'default' if omitted)
+  resources:                  # Optional default resource hints (modal can override)
+    requests:
+      cpu: "250m"
+      memory: "64Mi"
+    limits:
+      cpu: "500m"
+      memory: "128Mi"
 ```
 
 Example:
@@ -268,7 +270,8 @@ docker build -t ghcr.io/your-org/jobshot:latest .
 - Backend exposes `/api/run-job` creating a Kubernetes Job object with:
     - `spec.template.spec.containers[0].command` from `entrypoint`
     - `spec.template.spec.containers[0].args` from `parameters`
-  - `spec.template.spec.containers[0].image` from (possibly edited) container field
+  - `spec.template.spec.containers[0].image` from edited container field
+  - `spec.template.spec.containers[0].resources` from modal (if provided)
 - Auth selection:
     - External: environment variables
     - In-cluster: ServiceAccount (auto token rotation)
