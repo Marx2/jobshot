@@ -33,6 +33,24 @@ function stringToParams(value: string): string[] {
   return value.split('\n').map(l => l.trim()).filter(Boolean);
 }
 
+function envToString(env: Record<string, string> | undefined): string {
+  if (!env || Object.keys(env).length === 0) return '';
+  return Object.entries(env).map(([k, v]) => `${k}=${v}`).join('\n');
+}
+
+function stringToEnv(value: string): Record<string, string> | undefined {
+  const lines = value.split('\n').map(l => l.trim()).filter(Boolean);
+  if (lines.length === 0) return undefined;
+  const env: Record<string, string> = {};
+  for (const line of lines) {
+    const eqIdx = line.indexOf('=');
+    if (eqIdx > 0) {
+      env[line.substring(0, eqIdx).trim()] = line.substring(eqIdx + 1).trim();
+    }
+  }
+  return Object.keys(env).length > 0 ? env : undefined;
+}
+
 const DEFAULT_RESOURCES = {
   requests: {cpu: '250m', memory: '64Mi'},
   limits: {cpu: '500m', memory: '128Mi'}
@@ -41,6 +59,7 @@ const DEFAULT_RESOURCES = {
 export function JobRunModal({job, onClose, onRun}: JobRunModalProps) {
   const [container, setContainer] = useState(job.container);
   const [parametersText, setParametersText] = useState(paramsToString(job.parameters || []));
+  const [envText, setEnvText] = useState(envToString(job.env));
   const [error, setError] = useState<string | null>(null);
   const firstInputRef = useRef<HTMLInputElement | null>(null);
   // Resource state fields
@@ -65,6 +84,7 @@ export function JobRunModal({job, onClose, onRun}: JobRunModalProps) {
   function handleResetDefaults() {
     setContainer(job.container);
     setParametersText(paramsToString(job.parameters || []));
+    setEnvText(envToString(job.env));
     setReqCpu(DEFAULT_RESOURCES.requests.cpu);
     setReqMem(DEFAULT_RESOURCES.requests.memory);
     setLimCpu(DEFAULT_RESOURCES.limits.cpu);
@@ -86,6 +106,7 @@ export function JobRunModal({job, onClose, onRun}: JobRunModalProps) {
     }
 
     const params = stringToParams(parametersText);
+    const envVars = stringToEnv(envText);
     // Build new job object preserving original entrypoint
     const updated: Job = {
       name: job.name,
@@ -94,6 +115,7 @@ export function JobRunModal({job, onClose, onRun}: JobRunModalProps) {
       container: trimmedContainer,
       parameters: params,
       entrypoint: job.entrypoint,
+      env: envVars,
       resources: {
         requests: {cpu: reqCpu.trim(), memory: reqMem.trim()},
         limits: {cpu: limCpu.trim(), memory: limMem.trim()}
@@ -165,6 +187,14 @@ export function JobRunModal({job, onClose, onRun}: JobRunModalProps) {
                         onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => setParametersText(e.target.value)}
                         className="field-textarea"
                         placeholder="--flag=value" rows={6}/>
+            </div>
+            <div className="field-group">
+              <label htmlFor="job-env" className="field-label">Environment Variables (one per line,
+                KEY=VALUE)</label>
+              <textarea id="job-env" value={envText}
+                        onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => setEnvText(e.target.value)}
+                        className="field-textarea"
+                        placeholder="MY_VAR=my_value" rows={4}/>
             </div>
             {error && <div className="form-error" role="alert">{error}</div>}
             <div className="modal-actions">

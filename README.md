@@ -17,6 +17,7 @@ Jobshot is a JavaScript/TypeScript application that provides a UI for executing 
 - Save job configurations to a config file
 - Edit job container image & parameters just before execution (Run Modal)
 - Define per-run CPU/memory resource requests & limits (optional)
+- Pass environment variables to job containers (optional)
 
 ## Quick Run Workflow (Editable Run Modal)
 
@@ -26,6 +27,7 @@ Clicking the "Run" button for a job now opens a modal, which shows:
 - Namespace (read-only)
 - Container Image (editable text field)
 - Parameters (multi-line textarea, one argument per line)
+- Environment Variables (multi-line textarea, one `KEY=VALUE` per line)
 - Resource requests/limits (defaults: requests cpu=250m memory=64Mi; limits cpu=500m memory=128Mi)
 
 The backend receives the modified `container` and `parameters` values and creates the Kubernetes Job
@@ -34,6 +36,7 @@ with:
 - `spec.template.spec.containers[0].command` from original `entrypoint` (unchanged in the modal)
 - `spec.template.spec.containers[0].image` from edited container field
 - `spec.template.spec.containers[0].args` from edited parameters list
+- `spec.template.spec.containers[0].env` from edited environment variables (if provided)
 - `spec.template.spec.containers[0].resources` from modal (if provided)
 
 Nothing is persisted back into `jobs.yaml` by this UI; overrides apply only to the single run (
@@ -72,6 +75,8 @@ Each job supports the following fields:
   entrypoint: [string, ...]   # Optional; becomes the container `command` (K8s)
   parameters: [string, ...]   # Optional; becomes container `args`
   namespace: string (optional; defaults to 'default' if omitted)
+  env:                        # Optional; environment variables passed to the container
+    KEY: "value"
   resources:                  # Optional default resource hints (modal can override)
     requests:
       cpu: "250m"
@@ -91,6 +96,9 @@ jobs:
     entrypoint: ["/bin/sh", "-c"]
     parameters:
       - "./backup.sh --db=main"
+    env:
+      DB_HOST: "db.example.com"
+      DB_PASSWORD: "secret"
     namespace: "jobshot"
 ```
 
@@ -271,6 +279,7 @@ docker build -t ghcr.io/your-org/jobshot:latest .
     - `spec.template.spec.containers[0].command` from `entrypoint`
     - `spec.template.spec.containers[0].args` from `parameters`
   - `spec.template.spec.containers[0].image` from edited container field
+  - `spec.template.spec.containers[0].env` from edited environment variables (if provided)
   - `spec.template.spec.containers[0].resources` from modal (if provided)
 - Auth selection:
     - External: environment variables

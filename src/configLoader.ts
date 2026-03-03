@@ -5,6 +5,7 @@ export interface Job {
   entrypoint: string[]; // <-- Added entrypoint field
   parameters: string[];
   namespace?: string;
+  env?: Record<string, string>;
   status?: JobStatus; // Added status field
   // Added optional Kubernetes resource requests/limits
   resources?: {
