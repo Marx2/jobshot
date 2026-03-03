@@ -327,6 +327,11 @@ async function runK8sJob(kc, namespace, job) {
             image: job.container,
             command: job.entrypoint,
             args: job.parameters,
+            // Attach env vars if present
+            env: job.env
+                ? Object.entries(job.env).map(
+                    ([name, value]) => ({name, value: String(value)}))
+                : undefined,
             // Attach resources if present
             resources: job.resources ? {
               requests: {
