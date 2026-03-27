@@ -6,6 +6,7 @@ export interface Job {
   parameters: string[];
   namespace?: string;
   env?: Record<string, string>;
+  secretName?: string;
   status?: JobStatus; // Added status field
   // Added optional Kubernetes resource requests/limits
   resources?: {

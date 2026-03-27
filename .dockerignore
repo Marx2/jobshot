@@ -1,0 +1,47 @@
+# Node modules (will be installed during build)
+node_modules
+
+# Git files
+.git
+.gitignore
+
+# IDE files
+.idea
+.vscode
+*.swp
+*.swo
+*~
+
+# Build artifacts
+dist
+build
+
+# Logs
+logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Testing
+coverage
+
+# Environment files (should be provided at runtime)
+.env
+.env.local
+.env.*.local
+
+# Documentation
+README.md
+*.md
+
+# CI/CD
+.github
+.gitlab-ci.yml
+
+# Claude plans
+.claude
