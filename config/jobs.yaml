@@ -39,3 +39,26 @@ jobs:
       SCRAB_USERNAME: "your_username"
       SCRAB_PASSWORD: "your_password"
     namespace: "pfire"
+  - name: "Database Backup with Credentials"
+    description: "Backup database using credentials from secret"
+    container: "backup-tool:latest"
+    entrypoint: ["backup.sh"]
+    parameters: []
+    namespace: "pfire"
+    secretName: "db-credentials"
+    resources:
+      requests:
+        cpu: "100m"
+        memory: "256Mi"
+      limits:
+        cpu: "500m"
+        memory: "512Mi"
+  - name: "API Integration Job"
+    description: "Job with both direct env vars and secret"
+    container: "api-client:latest"
+    entrypoint: ["python", "sync.py"]
+    namespace: "pfire"
+    env:
+      LOG_LEVEL: "info"
+      TIMEOUT: "30"
+    secretName: "api-credentials"

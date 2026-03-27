@@ -60,6 +60,7 @@ export function JobRunModal({job, onClose, onRun}: JobRunModalProps) {
   const [container, setContainer] = useState(job.container);
   const [parametersText, setParametersText] = useState(paramsToString(job.parameters || []));
   const [envText, setEnvText] = useState(envToString(job.env));
+  const [secretName, setSecretName] = useState(job.secretName || '');
   const [error, setError] = useState<string | null>(null);
   const firstInputRef = useRef<HTMLInputElement | null>(null);
   // Resource state fields
@@ -85,6 +86,7 @@ export function JobRunModal({job, onClose, onRun}: JobRunModalProps) {
     setContainer(job.container);
     setParametersText(paramsToString(job.parameters || []));
     setEnvText(envToString(job.env));
+    setSecretName(job.secretName || '');
     setReqCpu(DEFAULT_RESOURCES.requests.cpu);
     setReqMem(DEFAULT_RESOURCES.requests.memory);
     setLimCpu(DEFAULT_RESOURCES.limits.cpu);
@@ -116,6 +118,7 @@ export function JobRunModal({job, onClose, onRun}: JobRunModalProps) {
       parameters: params,
       entrypoint: job.entrypoint,
       env: envVars,
+      secretName: secretName.trim() || undefined,
       resources: {
         requests: {cpu: reqCpu.trim(), memory: reqMem.trim()},
         limits: {cpu: limCpu.trim(), memory: limMem.trim()}
@@ -133,7 +136,8 @@ export function JobRunModal({job, onClose, onRun}: JobRunModalProps) {
             <button type="button" className="close-btn" onClick={onClose} aria-label="Close">×
             </button>
           </div>
-          <form className="modal-body" onSubmit={handleSubmit}>
+          <form onSubmit={handleSubmit}>
+            <div className="modal-body">
             <div className="field-group">
               <label htmlFor="job-name" className="field-label">Name</label>
               <input id="job-name" type="text" value={job.name} readOnly
@@ -186,7 +190,7 @@ export function JobRunModal({job, onClose, onRun}: JobRunModalProps) {
               <textarea id="job-parameters" value={parametersText}
                         onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => setParametersText(e.target.value)}
                         className="field-textarea"
-                        placeholder="--flag=value" rows={6}/>
+                        placeholder="--flag=value" rows={3}/>
             </div>
             <div className="field-group">
               <label htmlFor="job-env" className="field-label">Environment Variables (one per line,
@@ -194,17 +198,37 @@ export function JobRunModal({job, onClose, onRun}: JobRunModalProps) {
               <textarea id="job-env" value={envText}
                         onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => setEnvText(e.target.value)}
                         className="field-textarea"
-                        placeholder="MY_VAR=my_value" rows={4}/>
+                        placeholder="MY_VAR=my_value" rows={3}/>
+            </div>
+            <div className="field-group">
+              <label htmlFor="secret-name" className="field-label">
+                Kubernetes Secret (optional):
+              </label>
+              <input
+                  id="secret-name"
+                  type="text"
+                  className="field-input"
+                  value={secretName}
+                  onChange={(e: React.ChangeEvent<HTMLInputElement>) => setSecretName(e.target.value)}
+                  placeholder="e.g., db-credentials"
+              />
+              <div className="field-hint">
+                If specified, all keys from this secret will be available as environment variables
+              </div>
             </div>
             {error && <div className="form-error" role="alert">{error}</div>}
-            <div className="modal-actions">
-              <button type="button" className="secondary-btn" onClick={handleResetDefaults}>Reset
-              </button>
-              <button type="button" className="secondary-btn" onClick={onClose}>Cancel</button>
-              <button type="submit" className="primary-btn">Run</button>
             </div>
-            <p className="hint">The job will include specified resource requests and limits.
-              Entrypoint (command) is unchanged.</p>
+            <div className="modal-footer">
+              <p className="hint" style={{margin: '0 0 12px 0', fontSize: '12px'}}>
+                The job will include specified resource requests and limits. Entrypoint (command) is unchanged.
+              </p>
+              <div className="modal-actions">
+                <button type="button" className="secondary-btn" onClick={handleResetDefaults}>Reset
+                </button>
+                <button type="button" className="secondary-btn" onClick={onClose}>Cancel</button>
+                <button type="submit" className="primary-btn">Run</button>
+              </div>
+            </div>
           </form>
         </div>
       </div>

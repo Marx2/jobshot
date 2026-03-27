@@ -332,6 +332,12 @@ async function runK8sJob(kc, namespace, job) {
                 ? Object.entries(job.env).map(
                     ([name, value]) => ({name, value: String(value)}))
                 : undefined,
+            // Attach envFrom for secret reference if present
+            envFrom: job.secretName ? [{
+              secretRef: {
+                name: job.secretName
+              }
+            }] : undefined,
             // Attach resources if present
             resources: job.resources ? {
               requests: {
