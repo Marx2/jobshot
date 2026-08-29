@@ -13,6 +13,9 @@ export interface Job {
     requests: { cpu: string; memory: string };
     limits: { cpu: string; memory: string };
   };
+  // Optional Kubernetes volumes and volumeMounts (passed through as-is to the pod spec)
+  volumes?: object[];
+  volumeMounts?: object[];
 }
 
 export interface JobStatus {
