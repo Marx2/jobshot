@@ -348,8 +348,12 @@ async function runK8sJob(kc, namespace, job) {
                 cpu: job.resources.limits.cpu,
                 memory: job.resources.limits.memory
               }
-            } : undefined
+            } : undefined,
+            // Attach volumeMounts if present
+            volumeMounts: job.volumeMounts ? job.volumeMounts : undefined,
           }],
+          // Attach volumes if present
+          volumes: job.volumes ? job.volumes : undefined,
           restartPolicy: 'Never',
         },
       },
