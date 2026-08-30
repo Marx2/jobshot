@@ -354,6 +354,8 @@ async function runK8sJob(kc, namespace, job) {
           }],
           // Attach volumes if present
           volumes: job.volumes ? job.volumes : undefined,
+          // Pin to a specific node if requested
+          nodeSelector: job.nodeSelector ? job.nodeSelector : undefined,
           restartPolicy: 'Never',
         },
       },
