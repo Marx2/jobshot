@@ -359,7 +359,7 @@ async function runK8sJob(kc, namespace, job) {
           restartPolicy: 'Never',
         },
       },
-      backoffLimit: 1,
+      backoffLimit: 0,
     },
   };
 
