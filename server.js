@@ -25,6 +25,36 @@ app.use(bodyParser.json());
 // Serve static files from dist (React build)
 app.use(express.static(path.join(__dirname, 'dist')));
 
+// §64.4 — real health routes. These must stay ABOVE the SPA fallback at the
+// bottom of this file, which answers 200 index.html for every non-/api/ path.
+// Before this, /health and /ready both returned the 454-byte SPA shell with a
+// 200, so any HTTP probe on jobshot was a no-op that could never fail.
+//
+// /health is liveness and touches nothing on purpose. The Kubernetes API is a
+// network dependency, and a liveness probe that fails during an API blip would
+// restart-loop a pod whose UI is perfectly fine — restarting it cannot fix the
+// API server, it only removes the one pod still answering. Same reasoning as
+// cachest's /health (see the portfoliost implementation plan, §64.2).
+app.get('/health', (req, res) => {
+  res.json({status: 'ok'});
+});
+
+// /ready is the honest place for the "is it actually usable" question, and it
+// only checks local files — no network, so it cannot flap on an upstream.
+// `express.static(dist)` and the SPA fallback both resolve against
+// dist/index.html, and /api/jobs reads config/jobs.yaml on every request, so
+// if either file is gone the pod is up and answering while being unable to do
+// its one job. /health cannot see that without becoming dependency-aware.
+app.get('/ready', (req, res) => {
+  const missing = ['dist/index.html', 'config/jobs.yaml'].filter(
+      (rel) => !fs.existsSync(path.join(__dirname, rel)));
+  if (missing.length > 0) {
+    res.status(503).json({status: 'degraded', missing});
+    return;
+  }
+  res.json({status: 'ready'});
+});
+
 function getK8sConfig() {
   const apiServer = process.env.VITE_K8S_API;
   const token = process.env.VITE_K8S_TOKEN;
