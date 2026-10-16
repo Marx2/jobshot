@@ -18,6 +18,10 @@ env:
 
 jobs:
   release:
+    # [ci-skip] in the pushed commit message skips semantic-release and,
+    # transitively, the multi-arch build and the manifest merge (see
+    # pfire-docs docs/ci-skip.md for the convention).
+    if: ${{ !contains(github.event.head_commit.message, '[ci-skip]') }}
     runs-on: ubuntu-latest
     permissions: write-all
     outputs:
