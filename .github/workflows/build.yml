@@ -14,7 +14,7 @@ permissions:
 env:
   REGISTRY: ghcr.io
   IMAGE_NAME: ${{ github.repository }}
-  IMAGE_NAME_LC: ghcr.io/marx2/jobshot
+  IMAGE_NAME_LC: ghcr.io/${{ github.repository }}
 
 jobs:
   release:
